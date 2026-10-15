@@ -1,5 +1,6 @@
 from datetime import timedelta, date
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q, Count, Sum, F, IntegerField, ExpressionWrapper
 from django.utils import timezone
 from django.contrib.auth import login, logout
@@ -9,7 +10,7 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from .permissions import IsAdmin, IsStaffOrAdmin, IsEmployee, IsGuest
-from .models import CustomUser, MenuItem, Order, ShiftTokenAllocation, TokenDistribution, PasswordResetRequest
+from .models import CustomUser, MenuItem, Order, OrderItem, ShiftTokenAllocation, TokenDistribution, PasswordResetRequest
 from .serializers import (
     CustomUserSerializer, CustomUserCreateSerializer, LoginSerializer,
     MenuItemSerializer, OrderSerializer, ShiftTokenAllocationSerializer, TokenDistributionSerializer,
@@ -155,7 +156,6 @@ def logout_view(request):
         path='/',
         domain=settings.SESSION_COOKIE_DOMAIN or None,
         samesite=settings.SESSION_COOKIE_SAMESITE,
-        secure=settings.SESSION_COOKIE_SECURE,
     )
     
     # Set an expired CSRF cookie to clear it
@@ -176,7 +176,6 @@ def logout_view(request):
         path='/',
         domain=settings.SESSION_COOKIE_DOMAIN or None,
         samesite=settings.SESSION_COOKIE_SAMESITE,
-        secure=settings.SESSION_COOKIE_SECURE,
     )
     
     return response
@@ -214,6 +213,9 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='reset-password')
     def reset_password(self, request, pk=None):
         user = self.get_object()
+        if user.is_superuser and not request.user.is_superuser:
+            return Response({'error': 'Only superusers can reset another superuser\'s password.'}, status=status.HTTP_403_FORBIDDEN)
+
         new_password = (request.data.get('new_password') or '').strip()
         if not new_password:
             # Default to resetting to their user_id
@@ -294,16 +296,45 @@ class StaffOrderViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(query)
         return queryset
 
-    @action(detail=True, methods=['patch'])
+    @action(detail=True, methods=['patch', 'post'])
     def update_status(self, request, pk=None):
         order = self.get_object()
         new_status = request.data.get('status')
-        if new_status in ['approved', 'declined', 'completed']:
+        if not new_status:
+            return Response({'error': 'Status field is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        valid_transitions = {
+            'pending': ['approved', 'declined'],
+            'approved': ['completed', 'declined'],
+            'declined': [],
+            'completed': [],
+        }
+
+        allowed = valid_transitions.get(order.status, [])
+        if new_status not in allowed:
+            if order.status in ['declined', 'completed']:
+                return Response(
+                    {'error': f'Order #{order.id} is already {order.status} and cannot be modified.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            return Response(
+                {'error': f'Cannot transition order #{order.id} from "{order.status}" to "{new_status}". Allowed transitions: {allowed}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with transaction.atomic():
+            refunded = False
+            if new_status == 'declined':
+                refunded = order.refund_tokens()
+
             order.status = new_status
             order.save()
+
             serializer = self.get_serializer(order)
-            return Response(serializer.data)
-        return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+            data = dict(serializer.data)
+            if refunded:
+                data['refund_message'] = f'{order.total_tokens} tokens have been refunded to {order.user.username}.'
+            return Response(data)
 
 
 # Admin: Shift token allocations
@@ -347,41 +378,90 @@ def employee_menu(request):
     return Response(serializer.data)
 
 
+def _process_order_placement(request):
+    """
+    Unified transactional order placement with:
+    - Row-level lock on user (select_for_update) to prevent concurrency double-spending
+    - Strict validation: menu_item exists, is_available=True, quantity is positive int >= 1
+    - Server-side total calculation (never trusts client totals)
+    - Atomic token deduction and Order + OrderItem creation
+    """
+    items = request.data.get('items', [])
+    if not isinstance(items, list) or len(items) == 0:
+        return Response({'error': 'No items provided for the order'}, status=status.HTTP_400_BAD_REQUEST)
+
+    validated_items = []
+    total_tokens_needed = 0
+
+    with transaction.atomic():
+        # Lock user record to prevent concurrent double-spending
+        user = CustomUser.objects.select_for_update().get(id=request.user.id)
+
+        for item in items:
+            if not isinstance(item, dict):
+                return Response({'error': 'Malformed item payload'}, status=status.HTTP_400_BAD_REQUEST)
+
+            item_id = item.get('menu_item_id')
+            if not item_id:
+                return Response({'error': 'Each item must specify a menu_item_id'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                quantity = int(item.get('quantity', 0))
+            except (ValueError, TypeError):
+                return Response({'error': 'Quantity must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if quantity <= 0:
+                return Response({'error': 'Quantity must be at least 1'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                menu_item = MenuItem.objects.get(id=item_id)
+            except MenuItem.DoesNotExist:
+                return Response({'error': f'Menu item #{item_id} does not exist'}, status=status.HTTP_400_BAD_REQUEST)
+
+            if not menu_item.is_available:
+                return Response({'error': f'"{menu_item.name}" is currently unavailable'}, status=status.HTTP_400_BAD_REQUEST)
+
+            tokens_for_item = menu_item.price * quantity
+            total_tokens_needed += tokens_for_item
+            validated_items.append((menu_item, quantity, menu_item.price))
+
+        available_tokens = user.current_tokens()
+        if available_tokens < total_tokens_needed:
+            return Response(
+                {'error': f'Insufficient tokens. Required: {total_tokens_needed}, Available: {available_tokens}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Deduct tokens atomically
+        user.monthly_tokens -= total_tokens_needed
+        user.save(update_fields=['monthly_tokens'])
+
+        # Create Order
+        order = Order.objects.create(
+            user=user,
+            status='pending',
+            total_tokens=total_tokens_needed,
+            tokens_refunded=False
+        )
+
+        # Create OrderItems
+        for menu_item, quantity, unit_tokens in validated_items:
+            OrderItem.objects.create(
+                order=order,
+                menu_item=menu_item,
+                quantity=quantity,
+                tokens_per_item=unit_tokens
+            )
+
+        serializer = OrderSerializer(order)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
 # ✅ Employee: Place order
 @api_view(['POST'])
 @permission_classes([IsEmployee])
 def employee_place_order(request):
-    items = request.data.get('items', [])
-    if not items:
-        return Response({'error': 'No items provided'}, status=status.HTTP_400_BAD_REQUEST)
-
-    total_tokens_needed = 0
-    for item in items:
-        try:
-            menu_item = MenuItem.objects.get(id=item['menu_item_id'])
-            total_tokens_needed += menu_item.price * item['quantity']
-        except MenuItem.DoesNotExist:
-            return Response({'error': f'Menu item with id {item["menu_item_id"]} does not exist'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-    user = request.user
-    
-    # Check if user has enough tokens
-    if user.current_tokens() < total_tokens_needed:
-        return Response(
-            {'error': f'Insufficient tokens. Required: {total_tokens_needed}, Available: {user.current_tokens()}'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    serializer = OrderSerializer(data={'items': items}, context={'request': request})
-    serializer.is_valid(raise_exception=True)
-    order = serializer.save()
-
-    # Deduct tokens from user
-    user.monthly_tokens -= total_tokens_needed
-    user.save()
-
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return _process_order_placement(request)
 
 
 # Employee: View orders
@@ -435,60 +515,58 @@ def guest_orders(request):
 @api_view(['POST'])
 @permission_classes([IsGuest])
 def guest_place_order(request):
-    items = request.data.get('items', [])
-    if not items:
-        return Response({'error': 'No items provided'}, status=status.HTTP_400_BAD_REQUEST)
-
-    total_tokens_needed = 0
-    for item in items:
-        try:
-            menu_item = MenuItem.objects.get(id=item['menu_item_id'])
-            total_tokens_needed += menu_item.price * item['quantity']
-        except MenuItem.DoesNotExist:
-            return Response({'error': f'Menu item with id {item["menu_item_id"]} does not exist'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-    user = request.user
-    
-    # Check if user has enough tokens
-    if user.current_tokens() < total_tokens_needed:
-        return Response(
-            {'error': f'Insufficient tokens. Required: {total_tokens_needed}, Available: {user.current_tokens()}'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    serializer = OrderSerializer(data={'items': items}, context={'request': request})
-    serializer.is_valid(raise_exception=True)
-    order = serializer.save()
-
-    # Deduct tokens from user
-    user.monthly_tokens -= total_tokens_needed
-    user.save()
-
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return _process_order_placement(request)
 
 
 # Token Management
 @api_view(['POST'])
 @permission_classes([IsAdmin])
 def assign_tokens(request):
-    shift = request.data.get('shift')
+    shift = (request.data.get('shift') or '').strip().lower()
+    # Normalize shift if it comes with '_shift' suffix
+    shift = shift.replace('_shift', '')
     
     if not shift or shift not in ['day', 'mid', 'night']:
         return Response(
-            {'error': 'Invalid shift'}, 
+            {'error': f'Invalid shift "{shift}". Must be day, mid, or night.'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
     
     shift_limits = {'day': 50, 'mid': 75, 'night': 100}
-    
-    # Check if it's within the first 3 days of the month
-    today = date.today()
-    if today.day > 3:
-        return Response(
-            {'error': 'Tokens can only be assigned within the first 3 days of the month'},
-            status=status.HTTP_400_BAD_REQUEST
+    token_amount = request.data.get('tokens')
+    try:
+        token_amount = int(token_amount) if token_amount is not None else shift_limits[shift]
+        if token_amount < 0:
+            return Response({'error': 'Token amount cannot be negative'}, status=status.HTTP_400_BAD_REQUEST)
+    except (ValueError, TypeError):
+        token_amount = shift_limits[shift]
+
+    with transaction.atomic():
+        month_start = timezone.now().date().replace(day=1)
+        
+        # Create or update ShiftTokenAllocation audit record
+        allocation, _ = ShiftTokenAllocation.objects.get_or_create(
+            shift=shift,
+            allocation_month=month_start,
+            defaults={'tokens_per_user': token_amount}
         )
+        allocation.tokens_per_user = token_amount
+        allocation.save()  # Triggers save() which creates/updates TokenDistribution and syncs users
+
+        users_in_shift = CustomUser.objects.filter(
+            work_shift=shift,
+            role__in=['employee', 'guest']
+        )
+        updated_count = users_in_shift.count()
+
+        return Response({
+            'status': 'success',
+            'message': f'Successfully allocated {token_amount} tokens to {updated_count} users in {shift} shift.',
+            'updated': updated_count,
+            'tokens_assigned': token_amount,
+            'shift': shift,
+            'allocation_month': month_start.strftime('%Y-%m-%d')
+        })
     
     users = CustomUser.objects.filter(
         work_shift=shift,
@@ -827,6 +905,10 @@ def reset_password_view(request):
     if not user:
         return Response({'error': 'No account found matching this Username or Employee/Staff ID'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Protect admin and superuser accounts from public self-service reset
+    if user.role == 'admin' or user.is_superuser:
+        return Response({'error': 'Admin accounts cannot be reset via public self-service. Please contact the server administrator directly.'}, status=status.HTTP_403_FORBIDDEN)
+
     # Verify registered email
     if not user.email or user.email.lower() != email.lower():
         return Response({'error': 'The email provided does not match our records for this account'}, status=status.HTTP_400_BAD_REQUEST)
@@ -872,6 +954,10 @@ def submit_password_reset_request(request):
 
     if not user:
         return Response({'error': 'No account found matching this Username or Employee/Staff ID'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Protect admin and superuser accounts from public reset requests
+    if user.role == 'admin' or user.is_superuser:
+        return Response({'error': 'Admin accounts cannot request a reset via this portal. Please contact the server administrator directly.'}, status=status.HTTP_403_FORBIDDEN)
 
     # Verify registered email
     if not user.email or user.email.lower() != email.lower():
@@ -948,6 +1034,11 @@ class AdminPasswordResetViewSet(viewsets.ModelViewSet):
     def approve(self, request, pk=None):
         """Approve password reset request and set password to user's default employee user_id"""
         reset_req = self.get_object()
+        if reset_req.status != 'pending':
+            return Response(
+                {'error': f'Cannot approve request that is already {reset_req.status}.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         reset_req.approve(request.user)
         return Response({
             'status': 'success',
@@ -960,10 +1051,16 @@ class AdminPasswordResetViewSet(viewsets.ModelViewSet):
     def reject(self, request, pk=None):
         """Reject password reset request"""
         reset_req = self.get_object()
+        if reset_req.status != 'pending':
+            return Response(
+                {'error': f'Cannot reject request that is already {reset_req.status}.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         notes = request.data.get('notes', '')
         reset_req.reject(request.user, notes)
         return Response({
             'status': 'success',
             'message': f'Password reset request for {reset_req.user.username} has been rejected.'
         })
+
 

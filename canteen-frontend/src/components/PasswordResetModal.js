@@ -131,7 +131,7 @@ const PasswordResetModal = ({ show, onClose, username }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-primary hover:bg-ember-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Updating...' : 'Reset Password'}
             </button>

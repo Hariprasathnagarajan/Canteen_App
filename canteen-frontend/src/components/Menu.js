@@ -119,7 +119,7 @@ const Menu = ({ role = 'employee' }) => {
         
         {/* Order Summary */}
         <div className="md:col-span-1">
-          <div className="bg-gray-50 p-4 rounded-lg sticky top-4">
+          <div className="bg-cream p-4 rounded-3xl border border-stone-200/70 sticky top-24 shadow-card">
             <h3 className="text-lg font-semibold mb-4">Your Order</h3>
             
             {selectedItems.length === 0 ? (
@@ -177,7 +177,7 @@ const Menu = ({ role = 'employee' }) => {
                   <button
                     onClick={handleSubmitOrder}
                     disabled={loading || selectedItems.length === 0}
-                    className={`w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    className={`btn-tactile w-full bg-ember-600 text-white py-2.5 px-4 rounded-2xl hover:bg-ember-700 shadow-ember focus:outline-none focus:ring-2 focus:ring-ember-500 focus:ring-offset-2 focus:ring-offset-cream ${
                       loading || selectedItems.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >

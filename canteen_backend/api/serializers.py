@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import CustomUser, MenuItem, Order, OrderItem, ShiftTokenAllocation, TokenDistribution, PasswordResetRequest
@@ -10,9 +11,17 @@ class CustomUserCreateSerializer(serializers.ModelSerializer):
         fields = ['username', 'user_id', 'first_name', 'last_name', 'email', 'role', 'work_shift']
 
     def create(self, validated_data):
-        password = validated_data.pop('user_id')
+        user_id = validated_data.get('user_id')
         user = CustomUser(**validated_data)
-        user.set_password(password)
+        if user_id:
+            user.set_password(user_id)
+        if user.role == 'employee':
+            shift_limits = {'day': 50, 'mid': 75, 'night': 100}
+            user.monthly_tokens = shift_limits.get(user.work_shift, 50)
+            user.last_token_reset = timezone.now().date().replace(day=1)
+        elif user.role == 'guest':
+            user.monthly_tokens = 30
+            user.last_token_reset = timezone.now().date().replace(day=1)
         user.save()
         return user
 
@@ -74,8 +83,8 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'user', 'user_details', 'status', 'total_tokens', 'created_at', 'updated_at', 'order_items', 'items']
-        read_only_fields = ['user', 'total_tokens']
+        fields = ['id', 'user', 'user_details', 'status', 'total_tokens', 'tokens_refunded', 'created_at', 'updated_at', 'order_items', 'items']
+        read_only_fields = ['user', 'total_tokens', 'tokens_refunded']
 
     def get_user_details(self, obj):
         return {

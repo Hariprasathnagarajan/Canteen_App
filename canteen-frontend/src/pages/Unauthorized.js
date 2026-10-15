@@ -1,26 +1,36 @@
-import { Shield } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ShieldAlert } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
 
 const Unauthorized = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="max-w-md w-full text-center">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
-            <Shield className="w-8 h-8 text-red-600" />
+    <div className="flex min-h-[100dvh] items-center justify-center bg-cream px-4">
+      <div className="grain-overlay" />
+      <div className="w-full max-w-md text-center">
+        <div className="rounded-5xl border border-stone-200/70 bg-white p-10 shadow-diffusion">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-red-50 text-red-600">
+            <ShieldAlert className="h-8 w-8" strokeWidth={2} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
-          <p className="text-gray-600 mb-6">
-            You don't have permission to access this page.
+          <p className="font-mono-tokens text-[11px] uppercase tracking-[0.24em] text-ember-600">Wrong counter</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-ink">Access denied</h1>
+          <p className="mx-auto mt-2 max-w-[38ch] text-sm leading-relaxed text-ink-mute">
+            Your role does not serve this page. Head back to your own counter.
           </p>
-          <button
-            onClick={() => navigate(-1)}
-            className="bg-primary hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
-          >
-            Go Back
-          </button>
+          <div className="mt-6 flex justify-center gap-2">
+            <button
+              onClick={() => navigate(-1)}
+              className="btn-tactile rounded-2xl bg-stone-900 px-6 py-2.5 text-sm font-bold text-cream hover:bg-ember-600"
+            >
+              Go back
+            </button>
+            <Link
+              to="/"
+              className="btn-tactile rounded-2xl border border-stone-200 bg-white px-6 py-2.5 text-sm font-bold text-ink-soft shadow-card hover:text-ink"
+            >
+              Home
+            </Link>
+          </div>
         </div>
       </div>
     </div>

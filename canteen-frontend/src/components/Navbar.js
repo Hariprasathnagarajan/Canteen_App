@@ -1,47 +1,44 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Menu, X, User, LayoutGrid, Users, Coins, UtensilsCrossed, ClipboardList, Soup } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Menu, X, User, BarChart2, Users, CreditCard, Utensils, ClipboardList, Shield } from 'lucide-react';
 import LogoutButton from './LogoutButton';
+import TokenPill from './canteen/TokenPill';
 
 const Navbar = () => {
   const { user, isAuthenticated, loading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
-  // Navigation items based on user role
   const getNavItems = () => {
     if (!user) return [];
-    
-    const commonItems = [
-      { name: 'Profile', path: `/${user.role}/profile`, icon: <User className="h-4 w-4" /> }
-    ];
-
+    const profile = { name: 'Profile', path: `/${user.role}/profile`, icon: User };
     switch (user.role) {
       case 'admin':
         return [
-          { name: 'Dashboard', path: '/admin/dashboard', icon: <BarChart2 className="h-4 w-4" /> },
-          { name: 'Users', path: '/admin/users', icon: <Users className="h-4 w-4" /> },
-          { name: 'Tokens', path: '/admin/tokens', icon: <CreditCard className="h-4 w-4" /> },
-          ...commonItems
+          { name: 'Dashboard', path: '/admin/dashboard', icon: LayoutGrid },
+          { name: 'Users', path: '/admin/users', icon: Users },
+          { name: 'Tokens', path: '/admin/tokens', icon: Coins },
+          profile,
         ];
       case 'staff':
         return [
-          { name: 'Orders', path: '/staff/orders', icon: <ClipboardList className="h-4 w-4" /> },
-          { name: 'Menu', path: '/staff/menu', icon: <Utensils className="h-4 w-4" /> },
-          ...commonItems
+          { name: 'Orders', path: '/staff/orders', icon: ClipboardList },
+          { name: 'Menu', path: '/staff/menu', icon: UtensilsCrossed },
+          profile,
         ];
       case 'employee':
         return [
-          { name: 'Menu', path: '/employee/menu', icon: <Utensils className="h-4 w-4" /> },
-          { name: 'My Orders', path: '/employee/orders', icon: <ClipboardList className="h-4 w-4" /> },
-          ...commonItems
+          { name: 'Menu', path: '/employee/menu', icon: UtensilsCrossed },
+          { name: 'My Orders', path: '/employee/orders', icon: ClipboardList },
+          profile,
         ];
       case 'guest':
         return [
-          { name: 'Menu', path: '/guest/menu', icon: <Utensils className="h-4 w-4" /> },
-          { name: 'My Orders', path: '/guest/orders', icon: <ClipboardList className="h-4 w-4" /> },
-          ...commonItems
+          { name: 'Menu', path: '/guest/menu', icon: UtensilsCrossed },
+          { name: 'My Orders', path: '/guest/orders', icon: ClipboardList },
+          profile,
         ];
       default:
         return [];
@@ -51,126 +48,126 @@ const Navbar = () => {
   const navItems = getNavItems();
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
 
-  if (loading || !isAuthenticated) {
-    return null;
-  }
+  if (loading || !isAuthenticated) return null;
 
-  const roleColors = {
-    admin: 'bg-purple-100 text-purple-800 border-purple-200',
-    staff: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    employee: 'bg-blue-100 text-blue-800 border-blue-200',
-    guest: 'bg-amber-100 text-amber-800 border-amber-200',
+  const roleBadge = {
+    admin: 'bg-stone-900 text-amber-100 border-stone-900',
+    staff: 'bg-green-50 text-green-800 border-green-200',
+    employee: 'bg-ember-50 text-ember-700 border-ember-200',
+    guest: 'bg-amber-50 text-amber-800 border-amber-200',
   };
 
   return (
-    <nav className="glass-nav sticky top-0 z-40 bg-white/90 backdrop-blur-md shadow-sm border-b border-slate-200/80">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex items-center">
-            <Link to="/" className="flex items-center space-x-2.5 group">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform">
-                <Utensils className="h-5 w-5" />
-              </div>
-              <span className="text-lg font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-                Canteen App
-              </span>
-            </Link>
+    <header className="sticky top-0 z-40 px-3 pt-3 sm:px-5">
+      <nav className="glass-nav mx-auto max-w-[1400px] rounded-2xl shadow-card">
+        <div className="flex h-16 items-center justify-between gap-3 px-3 sm:px-4">
+          <Link to="/" className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-stone-900 text-cream shadow-card">
+              <Soup className="h-5 w-5" strokeWidth={2} />
+              <span className="absolute ml-6 mt-6 h-2 w-2 rounded-full bg-ember-500 ring-2 ring-cream" />
+            </span>
+            <span className="hidden min-w-0 flex-col leading-none min-[420px]:flex">
+              <span className="truncate text-[17px] font-extrabold tracking-tight text-ink">Annapurna</span>
+              <span className="font-mono-tokens text-[10px] uppercase tracking-[0.22em] text-ink-mute">Canteen OS</span>
+            </span>
+          </Link>
 
-            <div className="hidden sm:ml-8 sm:flex sm:space-x-1">
+          <div className="hidden items-center gap-1 rounded-full border border-stone-200/70 bg-white/70 p-1 lg:flex">
+            {navItems.map((item) => {
+              const active = isActive(item.path);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`relative inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors duration-200 ${
+                    active ? 'text-cream' : 'text-ink-soft hover:text-ink'
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="nav-pill"
+                      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                      className="absolute inset-0 rounded-full bg-stone-900"
+                    />
+                  )}
+                  <Icon className="relative z-10 h-4 w-4" strokeWidth={2} />
+                  <span className="relative z-10">{item.name}</span>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="hidden items-center gap-2.5 md:flex">
+            {(user?.role === 'employee' || user?.role === 'guest') && (
+              <TokenPill value={user?.tokens ?? 0} tone="light" />
+            )}
+            <div className="flex items-center gap-2.5 rounded-full border border-stone-200/70 bg-white/70 py-1 pl-1 pr-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ember-600 text-xs font-extrabold text-white">
+                {(user?.name || user?.username || 'U')[0].toUpperCase()}
+              </span>
+              <span className="hidden max-w-[140px] flex-col leading-tight xl:flex">
+                <span className="truncate text-[13px] font-bold text-ink">{user?.name || user?.username}</span>
+                <span className="truncate text-[11px] text-ink-mute">{user?.email || user?.role}</span>
+              </span>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${roleBadge[user?.role] || 'bg-stone-100 text-stone-700 border-stone-200'}`}>
+                {user?.role}
+              </span>
+            </div>
+            <LogoutButton variant="ghost" size="sm" showLabel={false} className="rounded-full border border-stone-200/70 bg-white/70" />
+          </div>
+
+          <button
+            onClick={() => setMobileMenuOpen((v) => !v)}
+            className="btn-tactile inline-flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200/70 bg-white/70 text-ink lg:hidden"
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" strokeWidth={2} /> : <Menu className="h-5 w-5" strokeWidth={2} />}
+          </button>
+        </div>
+
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden border-t border-stone-200/70 lg:hidden"
+          >
+            <div className="space-y-1 px-3 py-3">
               {navItems.map((item) => {
                 const active = isActive(item.path);
+                const Icon = item.icon;
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
-                    className={`inline-flex items-center px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
-                      active
-                        ? 'bg-blue-50/80 text-blue-700 shadow-sm border border-blue-100'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-colors ${
+                      active ? 'bg-stone-900 text-cream' : 'text-ink-soft hover:bg-cream-dark'
                     }`}
                   >
-                    {item.icon && <span className={`mr-2 ${active ? 'text-blue-600' : 'text-slate-400'}`}>{item.icon}</span>}
+                    <Icon className="h-4 w-4" strokeWidth={2} />
                     {item.name}
                   </Link>
                 );
               })}
-            </div>
-          </div>
-
-          <div className="hidden sm:flex sm:items-center sm:space-x-4">
-            <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5 shadow-sm">
-              <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
-                {(user?.name || user?.username || 'U')[0].toUpperCase()}
-              </div>
-              <div className="flex flex-col text-left">
-                <span className="text-xs font-semibold text-slate-800 leading-none">
-                  {user?.name || user?.username}
-                </span>
-                <span className="text-[10px] text-slate-500 mt-0.5">
-                  {user?.email || (user?.role && user.role.toUpperCase())}
-                </span>
-              </div>
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border tracking-wide uppercase ${roleColors[user?.role] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                {user?.role}
-              </span>
-            </div>
-            <LogoutButton variant="ghost" size="sm" showLabel={false} />
-          </div>
-
-          <div className="-mr-2 flex items-center sm:hidden">
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
-              aria-expanded="false"
-            >
-              <span className="sr-only">Open main menu</span>
-              {mobileMenuOpen ? (
-                <X className="block h-6 w-6" aria-hidden="true" />
-              ) : (
-                <Menu className="block h-6 w-6" aria-hidden="true" />
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile menu */}
-      {mobileMenuOpen && (
-        <div className="sm:hidden border-t border-slate-200/80 bg-white/95 backdrop-blur-md px-4 pt-3 pb-5 space-y-2">
-          {navItems.map((item) => {
-            const active = isActive(item.path);
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  active
-                    ? 'bg-blue-50 text-blue-700 font-semibold'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                {item.icon && <span className="mr-3 text-slate-400">{item.icon}</span>}
-                {item.name}
-              </Link>
-            );
-          })}
-          
-          <div className="pt-4 border-t border-slate-200/80 flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
-                {(user?.name || user?.username || 'U')[0].toUpperCase()}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-800">{user?.name || user?.username}</p>
-                <p className="text-xs text-slate-500">{user?.email}</p>
+              <div className="flex items-center justify-between border-t border-stone-200/70 pt-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-ember-600 text-xs font-extrabold text-white">
+                    {(user?.name || user?.username || 'U')[0].toUpperCase()}
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-ink">{user?.name || user?.username}</p>
+                    <p className="font-mono-tokens text-[11px] text-ink-mute">{user?.tokens ?? 0} tokens · {user?.role}</p>
+                  </div>
+                </div>
+                <LogoutButton variant="ghost" size="sm" showLabel />
               </div>
             </div>
-            <LogoutButton variant="ghost" size="sm" showLabel={true} />
-          </div>
-        </div>
-      )}
-    </nav>
+          </motion.div>
+        )}
+      </nav>
+    </header>
   );
 };
 

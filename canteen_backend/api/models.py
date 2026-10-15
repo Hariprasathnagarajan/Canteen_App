@@ -36,8 +36,10 @@ class CustomUser(AbstractUser):
         # Check if we need to reset tokens (new month)
         now = timezone.now().date()
         if now.month != self.last_token_reset.month or now.year != self.last_token_reset.year:
-            self.monthly_tokens = 0
-            self.last_token_reset = now
+            shift_limits = {'day': 50, 'mid': 75, 'night': 100}
+            base_tokens = shift_limits.get(self.work_shift, 50) if self.role == 'employee' else (30 if self.role == 'guest' else 0)
+            self.monthly_tokens = base_tokens
+            self.last_token_reset = now.replace(day=1)
             self.save(update_fields=['monthly_tokens', 'last_token_reset'])
             
         return self.monthly_tokens
@@ -68,6 +70,7 @@ class Order(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='orders')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     total_tokens = models.PositiveIntegerField(default=0)
+    tokens_refunded = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -78,6 +81,16 @@ class Order(models.Model):
     def total_amount(self):
         """Calculate total amount from order items"""
         return sum(item.tokens_per_item * item.quantity for item in self.order_items.all())
+
+    def refund_tokens(self):
+        """Safely refund deducted tokens to user if order is declined/cancelled (idempotent)"""
+        if not self.tokens_refunded and self.total_tokens > 0 and self.user.role not in ['admin', 'staff']:
+            self.user.monthly_tokens += self.total_tokens
+            self.user.save(update_fields=['monthly_tokens'])
+            self.tokens_refunded = True
+            self.save(update_fields=['tokens_refunded'])
+            return True
+        return False
 
     def __str__(self):
         return f"Order #{self.id} - {self.user.username}"

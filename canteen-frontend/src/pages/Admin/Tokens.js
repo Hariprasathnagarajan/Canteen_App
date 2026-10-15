@@ -190,7 +190,7 @@ const AdminTokens = () => {
   const getRoleBadgeColor = (role) => {
     switch (role) {
       case 'admin': return 'bg-purple-100 text-purple-800';
-      case 'staff': return 'bg-blue-100 text-blue-800';
+      case 'staff': return 'bg-ember-100 text-ember-800';
       case 'employee': return 'bg-green-100 text-green-800';
       case 'guest': return 'bg-orange-100 text-orange-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -202,7 +202,7 @@ const AdminTokens = () => {
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold text-gray-800">
           {title} Shift
-          <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+          <span className="ml-2 px-2 py-1 bg-ember-100 text-ember-800 text-sm rounded-full font-mono-tokens">
             {tokenData[shift]?.users?.length || 0} Users
           </span>
         </h2>
@@ -210,7 +210,7 @@ const AdminTokens = () => {
           onClick={() => handleAssignTokens(shift)}
           disabled={assigning}
           className={`px-4 py-2 rounded-md text-sm font-medium text-white ${
-            assigning ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'
+            assigning ? 'bg-stone-400' : 'bg-ember-600 hover:bg-ember-700 shadow-ember'
           }`}
         >
           {assigning ? 'Assigning...' : 'Assign Tokens'}
@@ -260,7 +260,7 @@ const AdminTokens = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
+      <div className="p-4 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
           <p className="mt-2 text-gray-600">Loading token data...</p>
@@ -270,7 +270,7 @@ const AdminTokens = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <div className="p-4 md:p-6">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Token Management</h1>

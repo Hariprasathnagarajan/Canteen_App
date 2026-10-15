@@ -12,11 +12,11 @@ const LogoutButton = ({ className = '', variant = 'ghost', size = 'default', sho
     }
   };
 
-  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-xl transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 active:scale-95';
-  
+  const baseStyles = 'btn-tactile inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-cream';
+
   const variantStyles = variant === 'ghost'
-    ? 'text-slate-600 hover:text-red-600 hover:bg-red-50/80 border border-transparent hover:border-red-100 focus:ring-red-500'
-    : 'bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-500/20 focus:ring-red-500';
+    ? 'text-ink-mute hover:text-red-700 hover:bg-red-50 border border-transparent hover:border-red-200 focus:ring-red-400'
+    : 'bg-stone-900 text-cream hover:bg-ember-600 shadow-card focus:ring-ember-500';
 
   const sizeStyles = size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3.5 py-2 text-sm';
 

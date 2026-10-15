@@ -94,7 +94,7 @@ const PasswordChangeCard = () => {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 md:p-8 mt-6 transition-all duration-200">
       <div className="flex items-center space-x-3 pb-4 mb-6 border-b border-slate-100">
-        <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+          <div className="w-10 h-10 rounded-xl bg-ember-50 text-ember-700 flex items-center justify-center font-bold">
           <KeyRound className="w-5 h-5" />
         </div>
         <div>
@@ -133,7 +133,7 @@ const PasswordChangeCard = () => {
               value={formData.old_password}
               onChange={handleChange}
               placeholder="Enter current password"
-              className="w-full pl-10 pr-10 py-2.5 text-sm bg-slate-50/50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+              className="w-full pl-10 pr-10 py-2.5 text-sm bg-slate-50/50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-ember-500/20 focus:border-ember-500 transition-colors"
               required
             />
             <button
@@ -162,7 +162,7 @@ const PasswordChangeCard = () => {
               value={formData.new_password}
               onChange={handleChange}
               placeholder="Minimum 6 characters"
-              className="w-full pl-10 pr-10 py-2.5 text-sm bg-slate-50/50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+              className="w-full pl-10 pr-10 py-2.5 text-sm bg-slate-50/50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-ember-500/20 focus:border-ember-500 transition-colors"
               required
             />
             <button
@@ -191,7 +191,7 @@ const PasswordChangeCard = () => {
               value={formData.confirm_password}
               onChange={handleChange}
               placeholder="Re-enter new password"
-              className="w-full pl-10 pr-10 py-2.5 text-sm bg-slate-50/50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+              className="w-full pl-10 pr-10 py-2.5 text-sm bg-slate-50/50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-ember-500/20 focus:border-ember-500 transition-colors"
               required
             />
             <button
@@ -227,7 +227,7 @@ const PasswordChangeCard = () => {
           <button
             type="submit"
             disabled={loading || !formData.old_password || !formData.new_password || !isLengthValid || !isMatchValid}
-            className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-2.5 rounded-xl font-medium text-sm text-white bg-blue-600 hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20"
+            className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-2.5 rounded-xl font-medium text-sm text-white bg-stone-900 hover:bg-ember-600 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-card"
           >
             {loading ? (
               <>

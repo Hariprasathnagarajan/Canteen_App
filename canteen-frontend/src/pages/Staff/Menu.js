@@ -73,7 +73,7 @@ const MenuForm = ({ editingItem, formData, setFormData, handleSubmit, resetForm 
       <div className="flex space-x-2">
         <button
           type="submit"
-          className="flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-lg bg-primary hover:bg-blue-700"
+          className="flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-lg bg-primary hover:bg-ember-600"
         >
           <Save size={16} />
           <span>{editingItem ? 'Update' : 'Add'} Item</span>
@@ -81,7 +81,7 @@ const MenuForm = ({ editingItem, formData, setFormData, handleSubmit, resetForm 
         <button
           type="button"
           onClick={resetForm}
-          className="flex items-center px-4 py-2 space-x-2 text-white transition-colors bg-gray-500 rounded-lg hover:bg-gray-600"
+          className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors bg-stone-500 rounded-xl hover:bg-stone-600"
         >
           <X size={16} />
           <span>Cancel</span>
@@ -207,14 +207,14 @@ const StaffMenu = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">      
+    <div className="pb-10">      
       <div className="p-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold text-gray-900">Menu Management</h1>
           {!showAddForm && !editingItem && (
             <button
               onClick={() => setShowAddForm(true)}
-              className="flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-lg bg-primary hover:bg-blue-700"
+          className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-xl bg-primary hover:bg-ember-600 shadow-ember"
             >
               <Plus size={16} />
               <span>Add Item</span>
@@ -244,7 +244,7 @@ const StaffMenu = () => {
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-gray-900">{item.name}</h3>
                     <div className="flex items-center space-x-2">
-                      <span className="px-2 py-1 text-sm font-medium text-blue-800 bg-blue-100 rounded-lg">
+                      <span className="px-2 py-1 text-sm font-medium text-ember-800 bg-ember-100 rounded-lg">
                         {item.price} tokens
                       </span>
                       <div className="flex items-center space-x-1">
@@ -277,7 +277,7 @@ const StaffMenu = () => {
                   <div className="flex justify-space-between space-x-2">
                     <button
                       onClick={() => handleEdit(item)}
-                      className="flex items-center px-3 py-1 space-x-1 text-blue-600 transition-colors rounded-lg hover:text-blue-800 hover:bg-blue-50"
+                      className="btn-tactile flex items-center px-3 py-1 space-x-1 text-ember-700 transition-colors rounded-lg hover:text-ember-800 hover:bg-ember-50"
                     >
                       <Edit2 size={14} />
                       <span>Edit</span>

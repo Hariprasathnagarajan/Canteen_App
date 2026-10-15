@@ -96,7 +96,7 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
       <div className="flex space-x-2">
         <button
           type="submit"
-          className="flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-lg bg-primary hover:bg-blue-700"
+          className="flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-lg bg-primary hover:bg-ember-600"
         >
           <Save size={16} />
           <span>{editingUser ? 'Update' : 'Add'} User</span>
@@ -104,7 +104,7 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
         <button
           type="button"
           onClick={resetForm}
-          className="flex items-center px-4 py-2 space-x-2 text-white transition-colors bg-gray-500 rounded-lg hover:bg-gray-600"
+          className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors bg-stone-500 rounded-xl hover:bg-stone-600"
         >
           <X size={16} />
           <span>Cancel</span>
@@ -292,7 +292,7 @@ const handleSubmit = async (e) => {
   const getRoleBadgeColor = (role) => {
     switch (role) {
       case 'admin': return 'bg-purple-100 text-purple-800';
-      case 'staff': return 'bg-blue-100 text-blue-800';
+      case 'staff': return 'bg-ember-100 text-ember-800';
       case 'employee': return 'bg-green-100 text-green-800';
       case 'guest': return 'bg-orange-100 text-orange-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -340,7 +340,7 @@ const handleSubmit = async (e) => {
           {!showAddForm && !editingUser && (
             <button
               onClick={() => setShowAddForm(true)}
-              className="flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-lg bg-primary hover:bg-blue-700"
+          className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-xl bg-primary hover:bg-ember-600 shadow-ember"
             >
               <Plus size={16} />
               <span>Add User</span>
@@ -414,11 +414,11 @@ const handleSubmit = async (e) => {
       {/* RENDER TAB: PASSWORD RESET REQUESTS */}
       {activeTab === 'requests' ? (
         <div className="space-y-4">
-          <div className="p-4 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-start space-x-3 text-xs text-blue-900">
-            <ShieldCheck className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="p-4 bg-ember-50/70 border border-ember-200/80 rounded-2xl flex items-start space-x-3 text-xs text-ember-900">
+            <ShieldCheck className="w-5 h-5 text-ember-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-sm text-blue-950 mb-0.5">Password Reset Policy</p>
-              <p className="text-blue-800">
+              <p className="font-semibold text-sm text-ember-950 mb-0.5">Password Reset Policy</p>
+              <p className="text-ember-800">
                 When an employee or staff member forgets their password, they submit a request here. When you click <strong>"Approve & Reset"</strong>, the system resets their password directly to their default <strong>Employee ID</strong>.
               </p>
             </div>
@@ -578,7 +578,7 @@ const handleSubmit = async (e) => {
                   </button>
                   <button
                     onClick={() => handleEdit(user)}
-                    className="p-1 text-blue-500 transition-colors hover:text-blue-700 hover:bg-blue-50 rounded-lg"
+                    className="btn-tactile p-1 text-ember-600 transition-colors hover:text-ember-800 hover:bg-ember-50 rounded-lg"
                     title="Edit user"
                   >
                     <Edit2 size={16} />
