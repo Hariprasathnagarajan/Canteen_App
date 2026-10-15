@@ -9,7 +9,10 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-canteen-app-productio
 DEBUG = config('DEBUG', default=True, cast=bool)
 
 # Hosts configuration
-allowed_hosts_env = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0,.onrender.com')
+allowed_hosts_env = config(
+    'ALLOWED_HOSTS',
+    default='localhost,127.0.0.1,0.0.0.0,canteen-app-l261.onrender.com,.onrender.com'
+)
 ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
 
 # Render proxy support: Render terminates SSL and forwards via HTTP with X-Forwarded-Proto: https
@@ -44,9 +47,12 @@ ROOT_URLCONF = 'canteen_backend.urls'
 # CORS settings
 cors_origins_env = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173'
+    default='https://vcafe.netlify.app,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173'
 )
 CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
+for origin in ['https://vcafe.netlify.app', 'https://canteen-app-l261.onrender.com']:
+    if origin not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(origin)
 
 # Regex to allow all Netlify and Render preview/production subdomains
 CORS_ALLOWED_ORIGIN_REGEXES = [
@@ -71,10 +77,10 @@ CORS_ALLOW_HEADERS = [
 # CSRF settings
 csrf_origins_env = config(
     'CSRF_TRUSTED_ORIGINS',
-    default='http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173'
+    default='https://vcafe.netlify.app,https://canteen-app-l261.onrender.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173'
 )
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in csrf_origins_env.split(',') if o.strip()]
-for wildcard_trusted in ['https://*.netlify.app', 'https://*.onrender.com']:
+for wildcard_trusted in ['https://vcafe.netlify.app', 'https://canteen-app-l261.onrender.com', 'https://*.netlify.app', 'https://*.onrender.com']:
     if wildcard_trusted not in CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS.append(wildcard_trusted)
 

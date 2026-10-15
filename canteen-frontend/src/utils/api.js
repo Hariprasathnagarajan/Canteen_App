@@ -3,7 +3,7 @@ import { getCSRFToken as getCSRFTokenFromCookie, ensureCSRFCookie } from './cook
 
 const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
   || (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL)
-  || '/api';
+  || 'https://canteen-app-l261.onrender.com/api';
 
 // Initialize API instance
 export const api = axios.create({
