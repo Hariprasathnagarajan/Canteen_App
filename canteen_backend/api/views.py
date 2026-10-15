@@ -47,8 +47,8 @@ def csrf_token_view(request):
             request.META.get('CSRF_COOKIE'),
             max_age=60 * 60 * 24 * 7 * 52,  # 1 year
             httponly=False,
-            samesite='Lax',
-            secure=settings.CSRF_COOKIE_SECURE
+            samesite=getattr(settings, 'CSRF_COOKIE_SAMESITE', 'Lax'),
+            secure=getattr(settings, 'CSRF_COOKIE_SECURE', False)
         )
     
     return response
@@ -100,7 +100,8 @@ def login_view(request):
         request.session.session_key,
         path='/',
         httponly=True,
-        samesite='Lax',
+        samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
+        secure=getattr(settings, 'SESSION_COOKIE_SECURE', False),
         max_age=1209600  # 2 weeks
     )
     return response

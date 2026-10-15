@@ -1,13 +1,19 @@
 import os
 from pathlib import Path
 from decouple import config
+import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY', default='your-secret-key-here')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-canteen-app-production-secret-key-change-me')
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+# Hosts configuration
+allowed_hosts_env = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0,.onrender.com')
+ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
+
+# Render proxy support: Render terminates SSL and forwards via HTTP with X-Forwarded-Proto: https
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -23,9 +29,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',  # Keep this high but after SessionMiddleware
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -35,39 +42,18 @@ MIDDLEWARE = [
 ROOT_URLCONF = 'canteen_backend.urls'
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
+cors_origins_env = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173'
+)
+CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins_env.split(',') if o.strip()]
+
+# Regex to allow all Netlify and Render preview/production subdomains
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https:\/\/.*\.netlify\.app$",
+    r"^https:\/\/.*\.onrender\.com$",
 ]
 
-# Cookie settings
-SESSION_COOKIE_NAME = 'sessionid'
-SESSION_COOKIE_AGE = 1209600  # 2 weeks, in seconds
-SESSION_COOKIE_DOMAIN = None  # Set to your domain in production
-SESSION_COOKIE_PATH = '/'
-SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'Lax'  # Can be 'Lax', 'Strict', or 'None'
-
-# CSRF settings
-CSRF_COOKIE_NAME = 'csrftoken'
-CSRF_COOKIE_AGE = 31449600  # 1 year
-CSRF_COOKIE_DOMAIN = None  # Set to your domain in production
-CSRF_COOKIE_PATH = '/'
-CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
-CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read the CSRF token
-CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_USE_SESSIONS = False
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-]
-
-# CORS settings
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = ['Content-Type', 'X-CSRFToken']
 CORS_ALLOW_HEADERS = [
@@ -81,13 +67,38 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
-CSRF_USE_SESSIONS = False
 
-# Session settings
-SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
-CSRF_COOKIE_SECURE = False     # Set to True in production with HTTPS
+# CSRF settings
+csrf_origins_env = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173'
+)
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in csrf_origins_env.split(',') if o.strip()]
+for wildcard_trusted in ['https://*.netlify.app', 'https://*.onrender.com']:
+    if wildcard_trusted not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(wildcard_trusted)
+
+# Cookie & Session settings for cross-site requests (Netlify <-> Render)
+# When deployed across domains (e.g. netlify.app -> onrender.com) over HTTPS,
+# SameSite must be 'None' and Secure must be True.
+IS_PRODUCTION = config('ENVIRONMENT', default='development').lower() == 'production' or not DEBUG
+
+SESSION_COOKIE_NAME = 'sessionid'
+SESSION_COOKIE_AGE = 1209600  # 2 weeks
+SESSION_COOKIE_DOMAIN = config('SESSION_COOKIE_DOMAIN', default=None)
+SESSION_COOKIE_PATH = '/'
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_AGE = 1209600  # 2 weeks, in seconds
+SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=IS_PRODUCTION, cast=bool)
+SESSION_COOKIE_SAMESITE = 'None' if SESSION_COOKIE_SECURE else 'Lax'
+
+CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_COOKIE_AGE = 31449600  # 1 year
+CSRF_COOKIE_DOMAIN = config('CSRF_COOKIE_DOMAIN', default=None)
+CSRF_COOKIE_PATH = '/'
+CSRF_COOKIE_HTTPONLY = False  # Frontend needs to read csrftoken for X-CSRFToken header
+CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=IS_PRODUCTION, cast=bool)
+CSRF_COOKIE_SAMESITE = 'None' if CSRF_COOKIE_SECURE else 'Lax'
+CSRF_USE_SESSIONS = False
 
 TEMPLATES = [
     {
@@ -105,12 +116,23 @@ TEMPLATES = [
     },
 ]
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Database configuration (supports Render PostgreSQL via DATABASE_URL or SQLite default)
+database_url = config('DATABASE_URL', default=None)
+if database_url:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=database_url,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 AUTH_USER_MODEL = 'api.CustomUser'
 
@@ -123,14 +145,16 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Additional CORS & CSRF settings (duplicates removed above)
-
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = 'static/'
+# Static files & Media (with WhiteNoise for production)
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 

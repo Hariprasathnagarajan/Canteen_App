@@ -1,0 +1,3 @@
+# Netlify Single Page Application (SPA) redirect rule
+# Ensures client-side routing works seamlessly when refreshing or directly visiting pages like /login, /admin/users, /employee/menu, etc.
+/*    /index.html   200

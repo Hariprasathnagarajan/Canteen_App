@@ -1,0 +1,15 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+# SPA redirect fallback to index.html for client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Cache-control for static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

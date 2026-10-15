@@ -1,4 +1,6 @@
 // Cookie utility functions
+let memoryCSRFToken = null;
+
 export const getCookie = (name) => {
   if (typeof document === 'undefined') return null;
   
@@ -21,14 +23,19 @@ export const deleteCookie = (name) => {
   if (typeof document === 'undefined') return;
   
   document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+  if (name === 'csrftoken') {
+    memoryCSRFToken = null;
+  }
 };
 
 // CSRF Token specific functions
-export const getCSRFToken = () => getCookie('csrftoken');
+export const getCSRFToken = () => {
+  return getCookie('csrftoken') || memoryCSRFToken;
+};
 
 export const ensureCSRFCookie = async (api) => {
-  const token = getCSRFToken();
-  if (token) return token;
+  const existingToken = getCSRFToken();
+  if (existingToken) return existingToken;
   
   // If no token, fetch one from the server
   try {
@@ -40,7 +47,15 @@ export const ensureCSRFCookie = async (api) => {
       },
     });
     
-    // The CSRF token should now be set in cookies
+    // In cross-origin deployments (Netlify frontend -> Render backend),
+    // document.cookie cannot read third-party cookies set by the backend domain,
+    // so we store the token returned in the JSON payload response:
+    const receivedToken = response.data?.csrftoken || response.data?.csrfToken || getCookie('csrftoken');
+    if (receivedToken) {
+      memoryCSRFToken = receivedToken;
+      return receivedToken;
+    }
+    
     return getCSRFToken();
   } catch (error) {
     console.error('Failed to get CSRF token:', error);
