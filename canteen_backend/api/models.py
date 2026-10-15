@@ -158,3 +158,44 @@ class TokenDistribution(models.Model):
     def __str__(self):
         user_display = self.user.username if self.user else 'Unknown User'
         return f"{user_display} - {self.tokens_allocated} tokens ({self.allocation_month.strftime('%b %Y')})"
+
+
+class PasswordResetRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='password_reset_requests')
+    reason = models.TextField(blank=True, default='')
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_password_resets')
+    admin_notes = models.TextField(blank=True, default='')
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def approve(self, admin_user):
+        """Approve reset request and set user password to default employee user_id"""
+        default_password = self.user.user_id or 'Password123!'
+        self.user.set_password(default_password)
+        self.user.save()
+        self.status = 'approved'
+        self.reviewed_at = timezone.now()
+        self.reviewed_by = admin_user
+        self.admin_notes = f'Approved by {admin_user.username}. Password reset to default Employee ID ({default_password}).'
+        self.save()
+
+    def reject(self, admin_user, notes=''):
+        self.status = 'rejected'
+        self.reviewed_at = timezone.now()
+        self.reviewed_by = admin_user
+        if notes:
+            self.admin_notes = notes
+        self.save()
+
+    def __str__(self):
+        return f"Password Reset: {self.user.username} ({self.status})"

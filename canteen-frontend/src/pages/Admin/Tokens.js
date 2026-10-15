@@ -67,13 +67,13 @@ const AdminTokens = () => {
     const maxRetries = 3;
     
     const loadData = async () => {
-      if (!isMounted || !isMounted.current) return;
+      if (!isMounted) return;
       
       try {
         console.log(`[Tokens] Fetching token summary (attempt ${retryCount + 1}/${maxRetries + 1})...`);
         const result = await fetchTokenSummary(adminAPI.getTokenSummary);
         
-        if (!isMounted || !isMounted.current) return;
+        if (!isMounted) return;
         
         // Handle aborted requests
         if (result?.aborted) {
@@ -93,7 +93,7 @@ const AdminTokens = () => {
         console.error('[Tokens] Error loading token summary:', error);
         
         // Retry logic with exponential backoff
-        if (retryCount < maxRetries && isMounted && isMounted.current) {
+        if (retryCount < maxRetries && isMounted) {
           retryCount++;
           const delay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Max 10s delay
           console.log(`[Tokens] Retrying in ${delay}ms (attempt ${retryCount + 1})...`);
@@ -106,7 +106,7 @@ const AdminTokens = () => {
         }
         
         // Only show error if we've exhausted all retries
-        if (isMounted && isMounted.current) {
+        if (isMounted) {
           toast.error(error.message || 'Failed to load token data');
         }
       }

@@ -109,7 +109,7 @@ const AdminDashboard = () => {
         },
         { 
           name: 'Total Employees', 
-          value: (statsRes.totalUsers - (statsRes.totalStaff || 0))?.toString() || '0',
+          value: (statsRes.totalEmployees ?? (statsRes.totalUsers - (statsRes.totalStaff || 0)))?.toString() || '0',
           icon: Users, 
           change: '0', 
           changeType: 'neutral' 

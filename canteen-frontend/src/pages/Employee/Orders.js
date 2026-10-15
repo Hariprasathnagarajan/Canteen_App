@@ -116,7 +116,7 @@ const EmployeeOrders = () => {
         {/* Today's Orders */}
         <div>
           <h2 className="mb-3 text-lg font-semibold text-gray-900">Today's Orders</h2>
-          {orders.today_orders.length > 0 ? (
+          {(orders?.today_orders || []).length > 0 ? (
             <div className="space-y-3">
               {orders.today_orders.map((order) => (
                 <OrderCard key={order.id} order={order} />
@@ -133,7 +133,7 @@ const EmployeeOrders = () => {
         {/* Past Orders */}
         <div>
           <h2 className="mb-3 text-lg font-semibold text-gray-900">Order History</h2>
-          {orders.past_orders.length > 0 ? (
+          {(orders?.past_orders || []).length > 0 ? (
             <div className="space-y-3">
               {orders.past_orders.map((order) => (
                 <OrderCard key={order.id} order={order} />

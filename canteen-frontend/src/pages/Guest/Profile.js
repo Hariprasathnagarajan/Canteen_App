@@ -1,5 +1,6 @@
 import { User, Badge, CreditCard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import PasswordChangeCard from '../../components/PasswordChangeCard';
 
 const GuestProfile = () => {
   const { user } = useAuth();
@@ -61,6 +62,9 @@ const GuestProfile = () => {
             </div>
           </div>
         </div>
+
+        {/* Change Password / Reset Module */}
+        <PasswordChangeCard />
       </div>
 
      

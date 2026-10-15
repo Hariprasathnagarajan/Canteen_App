@@ -3,6 +3,7 @@ import { authAPI, fetchCSRFToken, ensureCSRFToken } from '../utils/api';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { getDefaultRoute } from '../utils/routes';
 
 // Helper to clear auth data
 const clearAuthData = () => {
@@ -80,7 +81,10 @@ export const AuthProvider = ({ children }) => {
         throw err;
       });
       
-      const userData = response.data;
+      const userData = response?.data;
+      if (!userData || !userData.id) {
+        throw new Error('Invalid profile data');
+      }
       
       // Update state with user data
       setUser(userData);
@@ -92,9 +96,11 @@ export const AuthProvider = ({ children }) => {
         username: userData.username,
         email: userData.email,
         role: userData.role,
-        name: userData.name,
-        shift: userData.shift,
-        tokens_remaining: userData.tokens_remaining
+        name: userData.name || `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.username,
+        shift: userData.work_shift || userData.shift,
+        tokens: userData.tokens ?? userData.monthly_tokens ?? userData.tokens_remaining ?? 0,
+        monthly_tokens: userData.tokens ?? userData.monthly_tokens ?? userData.tokens_remaining ?? 0,
+        tokens_remaining: userData.tokens ?? userData.monthly_tokens ?? userData.tokens_remaining ?? 0
       };
       
       localStorage.setItem('user', JSON.stringify(userToStore));
@@ -109,7 +115,7 @@ export const AuthProvider = ({ children }) => {
         try {
           const parsedUser = JSON.parse(storedUser);
           // Only use stored user if we're not getting auth errors
-          if (error.response?.status !== 401) {
+          if (error.response?.status !== 401 && parsedUser?.id) {
             setUser(parsedUser);
             setIsAuthenticated(true);
             return parsedUser;
@@ -158,39 +164,58 @@ export const AuthProvider = ({ children }) => {
       await ensureCSRFToken();
       
       // Make the login request
-      await authAPI.login(credentials);
+      const loginResponse = await authAPI.login(credentials);
+      const userFromLogin = loginResponse?.data;
       
-      // Get the user profile to update auth state
-      const userData = await checkAuth();
+      // Attempt to refresh profile with active session
+      let userData = null;
+      try {
+        userData = await checkAuth();
+      } catch (err) {
+        console.warn('Profile fetch after login encountered an error, falling back to login response:', err);
+      }
+      
+      const activeUser = userData || userFromLogin;
+      if (!activeUser || !activeUser.id) {
+        throw new Error('Login failed: Invalid user profile data received from server');
+      }
       
       // Update auth state
-      setUser(userData);
+      setUser(activeUser);
       setIsAuthenticated(true);
       
       // Store user data in localStorage for session persistence
-      localStorage.setItem('user', JSON.stringify({
-        id: userData.id,
-        username: userData.username,
-        email: userData.email,
-        role: userData.role,
-        name: userData.name
-      }));
+      const userToStore = {
+        id: activeUser.id,
+        username: activeUser.username,
+        email: activeUser.email,
+        role: activeUser.role,
+        name: activeUser.name || `${activeUser.first_name || ''} ${activeUser.last_name || ''}`.trim() || activeUser.username,
+        shift: activeUser.work_shift || activeUser.shift,
+        tokens: activeUser.tokens ?? activeUser.monthly_tokens ?? activeUser.tokens_remaining ?? 0,
+        monthly_tokens: activeUser.tokens ?? activeUser.monthly_tokens ?? activeUser.tokens_remaining ?? 0,
+        tokens_remaining: activeUser.tokens ?? activeUser.monthly_tokens ?? activeUser.tokens_remaining ?? 0
+      };
+      
+      localStorage.setItem('user', JSON.stringify(userToStore));
       
       // Show success message
-      toast.success(`Welcome back, ${userData.name || userData.username}!`);
+      toast.success(`Welcome back, ${userToStore.name}!`);
       
       // Redirect based on role
-      const redirectPath = location.state?.from?.pathname || 
-        (userData.role === 'admin' ? '/admin/dashboard' : 
-         userData.role === 'staff' ? '/staff/orders' : 
-         userData.role === 'employee' ? '/employee/menu' : '/guest/menu');
+      const redirectPath = location.state?.from?.pathname || getDefaultRoute(activeUser.role);
       
       navigate(redirectPath, { replace: true });
       
-      return { success: true, user: userData };
+      return { success: true, user: activeUser };
     } catch (error) {
       console.error('Login failed:', error);
-      const errorMessage = error.response?.data?.detail || error.response?.data?.message || error.message || 'Login failed. Please check your credentials.';
+      const errorMessage =
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        'Login failed. Please check your credentials.';
       setError(errorMessage);
       setUser(null);
       setIsAuthenticated(false);
@@ -207,93 +232,65 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       setLoading(true);
-      
-      // Ensure we have a CSRF token before making the logout request
+      // Attempt to notify server of logout
       try {
         await ensureCSRFToken();
-        
-        // Make the logout request with credentials
-        await authAPI.logout(null, {
-          withCredentials: true,
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-          }
-        });
-      } catch (error) {
-        console.error('Logout API error (proceeding anyway):', error);
-      } finally {
-        // Always clear auth data and state, even if the API call fails
-        clearAuthData();
-        
-        // Reset state
-        setUser(null);
-        setIsAuthenticated(false);
-        setError(null);
-        
-        // Clear any pending requests or timers
-        if (window.authRefreshTimer) {
-          clearTimeout(window.authRefreshTimer);
-          delete window.authRefreshTimer;
-        }
-        
-        // Redirect to login with a small delay to ensure state is cleared
-        setTimeout(() => {
-          navigate('/login', { replace: true });
-          toast.success('You have been logged out successfully.');
-        }, 100);
-      }
-    } catch (error) {
-      console.error('Logout error:', error);
-      toast.error('An error occurred during logout.');
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-    try {
-      setLoading(true);
-      
-      // Only call logout API if we have a valid session
-      if (isAuthenticated) {
         await authAPI.logout();
+      } catch (err) {
+        console.warn('Logout API call failed, continuing client cleanup:', err);
       }
-      
-      // Clear user data and authentication state
+    } finally {
+      // Always clear auth data and state
+      clearAuthData();
       setUser(null);
       setIsAuthenticated(false);
-      
-      // Clear all cookies
-      document.cookie.split(';').forEach(cookie => {
-        const [name] = cookie.trim().split('=');
-        document.cookie = `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-      });
-      
-      // Clear localStorage and sessionStorage
-      localStorage.clear();
-      sessionStorage.clear();
-      
-      // Redirect to login page
-      navigate('/login');
-      toast.success('Logged out', { autoClose: 1200, pauseOnHover: false, hideProgressBar: true });
-    } catch (error) {
-      console.error('Logout failed:', error);
-      toast.error('An error occurred during logout. Please try again.');
-      throw error;
-    } finally {
+      setError(null);
       setLoading(false);
+      navigate('/login', { replace: true });
+      toast.success('Logged out successfully', { autoClose: 1400 });
     }
   };
 
-  // User and password update functionality can be added here when needed
+  const updateUser = useCallback((userData) => {
+    setUser((prev) => {
+      const updated = { ...(prev || {}), ...(userData || {}) };
+      try {
+        localStorage.setItem('user', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed to update localStorage user:', e);
+      }
+      return updated;
+    });
+  }, []);
+
+  const updatePassword = async (passwordData) => {
+    try {
+      await ensureCSRFToken();
+      const response = await authAPI.updatePassword(passwordData);
+      return { success: true, data: response.data };
+    } catch (err) {
+      console.error('Password update error:', err);
+      const errorMessage =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update password';
+      return { success: false, error: errorMessage };
+    }
+  };
 
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = {
     user,
+    setUser,
+    updateUser,
+    updatePassword,
     isAuthenticated,
     loading,
     error,
     login,
     logout,
-    checkAuth
+    checkAuth,
   };
 
   return (

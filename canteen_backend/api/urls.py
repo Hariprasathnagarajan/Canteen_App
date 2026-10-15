@@ -8,6 +8,7 @@ router.register(r'staff/menu', views.StaffMenuViewSet, basename='staff-menu')
 router.register(r'staff/orders', views.StaffOrderViewSet, basename='staff-orders')
 router.register(r'admin/shift-allocations', views.ShiftTokenAllocationViewSet, basename='shift-allocations')
 router.register(r'admin/token-distributions', views.TokenDistributionViewSet, basename='token-distributions')
+router.register(r'admin/password-resets', views.AdminPasswordResetViewSet, basename='admin-password-resets')
 
 
 urlpatterns = [
@@ -19,6 +20,9 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('profile/', views.profile_view, name='profile'),
     path('update_password/', views.update_password_view, name='update_password'),
+    path('password_reset/', views.reset_password_view, name='password_reset'),
+    path('password_reset/request/', views.submit_password_reset_request, name='password_reset_request'),
+    path('password_reset/status/', views.check_password_reset_status, name='password_reset_status'),
 
     # Admin endpoints
     path('admin/dashboard/stats/', views.get_dashboard_stats, name='dashboard_stats'),

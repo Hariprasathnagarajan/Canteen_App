@@ -16,9 +16,11 @@ const Menu = ({ role = 'employee' }) => {
   useEffect(() => {
     const fetchMenu = async () => {
       const api = role === 'employee' ? employeeAPI : guestAPI;
-      const { data } = await callApi(api.getMenu);
+      const res = await callApi(api.getMenu);
+      const data = res?.data;
       if (data) {
-        setMenuItems(Array.isArray(data) ? data : []);
+        const items = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+        setMenuItems(items);
       }
     };
     

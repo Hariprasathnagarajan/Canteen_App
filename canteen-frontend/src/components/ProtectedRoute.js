@@ -30,7 +30,7 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   }
 
   // If authenticated and authorized, render the child components.
-  return children;
+  return typeof children === 'function' ? children({ user }) : children;
 };
 
 export default ProtectedRoute;

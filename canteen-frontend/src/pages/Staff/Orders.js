@@ -98,7 +98,7 @@ const StaffOrders = () => {
         </div>
 
         <div className="mb-3">
-          <p className="text-sm text-gray-600">Customer: {order.user_details?.first_name} {order.user_details?.last_name}</p>
+          <p className="text-sm text-gray-600">Customer: {order.user_details?.first_name ? `${order.user_details.first_name} ${order.user_details.last_name || ''}`.trim() : (order.user_details?.username || 'Customer')}</p>
           <p className="text-sm text-gray-600">User ID: {order.user_details?.user_id}</p>
         </div>
 

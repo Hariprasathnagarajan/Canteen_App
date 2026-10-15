@@ -1,4 +1,5 @@
 from datetime import timedelta, date
+from django.conf import settings
 from django.db.models import Q, Count, Sum, F, IntegerField, ExpressionWrapper
 from django.utils import timezone
 from django.contrib.auth import login, logout
@@ -8,10 +9,11 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from .permissions import IsAdmin, IsStaffOrAdmin, IsEmployee, IsGuest
-from .models import CustomUser, MenuItem, Order, ShiftTokenAllocation, TokenDistribution
+from .models import CustomUser, MenuItem, Order, ShiftTokenAllocation, TokenDistribution, PasswordResetRequest
 from .serializers import (
     CustomUserSerializer, CustomUserCreateSerializer, LoginSerializer,
-    MenuItemSerializer, OrderSerializer, ShiftTokenAllocationSerializer, TokenDistributionSerializer
+    MenuItemSerializer, OrderSerializer, ShiftTokenAllocationSerializer, TokenDistributionSerializer,
+    PasswordResetRequestSerializer
 )
 
 
@@ -73,12 +75,21 @@ def login_view(request):
     # Set session to expire when browser is closed
     if not request.data.get('remember_me'):
         request.session.set_expiry(0)
-    
+
+    print(request.session.session_key)
+    print(user,user.id)
     response = Response({
         'id': user.id,
         'email': user.email,
-        'name': user.get_full_name(),
+        'username': user.username,
+        'name': user.get_full_name() or user.username,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
         'role': user.role,
+        'work_shift': user.work_shift,
+        'user_id': user.user_id,
+        'tokens': user.current_tokens() if user.role not in ['admin', 'staff'] else 0,
+        'monthly_tokens': user.monthly_tokens,
         'is_staff': user.is_staff,
         'is_superuser': user.is_superuser,
     })
@@ -87,11 +98,11 @@ def login_view(request):
     response.set_cookie(
         'sessionid', 
         request.session.session_key,
+        path='/',
         httponly=True,
         samesite='Lax',
         max_age=1209600  # 2 weeks
     )
-    
     return response
 
 
@@ -198,6 +209,26 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             
         output_serializer = CustomUserSerializer(user)
         return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='reset-password')
+    def reset_password(self, request, pk=None):
+        user = self.get_object()
+        new_password = (request.data.get('new_password') or '').strip()
+        if not new_password:
+            # Default to resetting to their user_id
+            new_password = user.user_id or 'Password123!'
+        elif len(new_password) < 6:
+            return Response(
+                {'error': 'Password must be at least 6 characters long'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user.set_password(new_password)
+        user.save()
+        return Response({
+            'status': 'success',
+            'message': f'Password for {user.username} has been reset to "{new_password}".'
+        })
 
 
 # Token refresh
@@ -495,9 +526,10 @@ def get_token_summary(request):
             'role': user.role
         }
         
-        if user.work_shift in summary:
-            summary[user.work_shift]['users'].append(user_data)
-            summary[user.work_shift]['total_tokens'] += user.monthly_tokens
+        shift_key = f"{user.work_shift}_shift" if user.work_shift and not user.work_shift.endswith('_shift') else user.work_shift
+        if shift_key in summary:
+            summary[shift_key]['users'].append(user_data)
+            summary[shift_key]['total_tokens'] += user.monthly_tokens
     
     return Response(summary)
 
@@ -587,9 +619,10 @@ def get_dashboard_stats(request):
             shift_employees = []
             shift_guests = []
         
-        # Get total staff and guest counts
+        # Get total staff, guest, and employee counts
         total_staff = CustomUser.objects.filter(role='staff').count()
         total_guests = CustomUser.objects.filter(role='guest').count()
+        total_employees = CustomUser.objects.filter(role='employee').count()
         
         # Format shift data with default values
         shift_data = {
@@ -606,6 +639,7 @@ def get_dashboard_stats(request):
         
         response_data = {
             'totalUsers': total_users,
+            'totalEmployees': total_employees,
             'userGrowth': round(user_growth, 1),
             'totalMenuItems': total_menu_items,
             'newItemsThisWeek': new_items_this_week,
@@ -700,18 +734,19 @@ def get_revenue_data(request):
     return Response(data)
 
 
-# Update password view
+# Update password view (for authenticated users)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_password_view(request):
-    """Update user password"""
+    """Update user password for logged-in employee, staff, guest, or admin"""
     user = request.user
     old_password = request.data.get('old_password')
     new_password = request.data.get('new_password')
+    confirm_password = request.data.get('confirm_password')
     
     if not old_password or not new_password:
         return Response(
-            {'error': 'Both old_password and new_password are required'}, 
+            {'error': 'Both current password and new password are required'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -728,9 +763,206 @@ def update_password_view(request):
             {'error': 'New password must be at least 6 characters long'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    if confirm_password and new_password != confirm_password:
+        return Response(
+            {'error': 'New password and confirmation do not match'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if old_password == new_password:
+        return Response(
+            {'error': 'New password must be different from current password'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
     # Update password
     user.set_password(new_password)
     user.save()
     
-    return Response({'message': 'Password updated successfully'})
+    return Response({
+        'status': 'success',
+        'message': 'Password updated successfully!'
+    })
+
+
+# Self-service Password Reset view (for employees and staff)
+@api_view(['POST', 'OPTIONS'])
+@permission_classes([AllowAny])
+@ensure_csrf_cookie
+def reset_password_view(request):
+    """
+    Public self-service password reset module for employees and staff.
+    Accepts:
+    - identifier: username or user_id (Employee/Staff ID)
+    - email: user's registered email
+    - new_password: new password (min 6 characters)
+    - confirm_password: confirmation matching new_password
+    """
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    identifier = (request.data.get('identifier') or request.data.get('username') or request.data.get('user_id') or '').strip()
+    email = (request.data.get('email') or '').strip()
+    new_password = request.data.get('new_password') or ''
+    confirm_password = request.data.get('confirm_password') or ''
+
+    if not identifier:
+        return Response({'error': 'Please enter your Username or Employee/Staff ID'}, status=status.HTTP_400_BAD_REQUEST)
+    if not email:
+        return Response({'error': 'Please enter your registered Email address'}, status=status.HTTP_400_BAD_REQUEST)
+    if not new_password:
+        return Response({'error': 'Please enter a new password'}, status=status.HTTP_400_BAD_REQUEST)
+    if len(new_password) < 6:
+        return Response({'error': 'New password must be at least 6 characters long'}, status=status.HTTP_400_BAD_REQUEST)
+    if confirm_password and new_password != confirm_password:
+        return Response({'error': 'New password and confirm password do not match'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Search user by username OR user_id (case-insensitive)
+    user = CustomUser.objects.filter(
+        Q(username__iexact=identifier) | Q(user_id__iexact=identifier)
+    ).first()
+
+    if not user:
+        return Response({'error': 'No account found matching this Username or Employee/Staff ID'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Verify registered email
+    if not user.email or user.email.lower() != email.lower():
+        return Response({'error': 'The email provided does not match our records for this account'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Update password
+    user.set_password(new_password)
+    user.save()
+
+    return Response({
+        'status': 'success',
+        'message': f'Password for {user.username} ({user.role.capitalize()}) has been reset successfully! You can now log in.',
+        'username': user.username,
+        'role': user.role
+    }, status=status.HTTP_200_OK)
+
+
+# Submit Password Reset Request (Requires Admin Approval)
+@api_view(['POST', 'OPTIONS'])
+@permission_classes([AllowAny])
+@ensure_csrf_cookie
+def submit_password_reset_request(request):
+    """
+    Public endpoint for employees and staff to request a password reset.
+    The request goes to the Admin for approval.
+    Once approved by Admin, the user's password will be reset to their default Employee ID.
+    """
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    identifier = (request.data.get('identifier') or request.data.get('username') or request.data.get('user_id') or '').strip()
+    email = (request.data.get('email') or '').strip()
+    reason = (request.data.get('reason') or '').strip()
+
+    if not identifier:
+        return Response({'error': 'Please enter your Username or Employee/Staff ID'}, status=status.HTTP_400_BAD_REQUEST)
+    if not email:
+        return Response({'error': 'Please enter your registered Email address'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Search user by username OR user_id (case-insensitive)
+    user = CustomUser.objects.filter(
+        Q(username__iexact=identifier) | Q(user_id__iexact=identifier)
+    ).first()
+
+    if not user:
+        return Response({'error': 'No account found matching this Username or Employee/Staff ID'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Verify registered email
+    if not user.email or user.email.lower() != email.lower():
+        return Response({'error': 'The email provided does not match our records for this account'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Check for existing pending request
+    existing_request = PasswordResetRequest.objects.filter(user=user, status='pending').first()
+    if existing_request:
+        return Response({
+            'status': 'pending',
+            'message': f'A password reset request for {user.username} is already pending Admin approval. Once approved, your password will be reset to your default Employee ID ({user.user_id or "User ID"}).',
+            'user_id': user.user_id,
+            'username': user.username
+        }, status=status.HTTP_200_OK)
+
+    reset_req = PasswordResetRequest.objects.create(
+        user=user,
+        reason=reason,
+        status='pending'
+    )
+
+    return Response({
+        'status': 'success',
+        'message': f'Password reset request submitted for {user.username}! The Admin will review and approve it. Once approved, you can log in using your Employee ID ({user.user_id or "User ID"}) as your password.',
+        'user_id': user.user_id,
+        'username': user.username,
+        'request_id': reset_req.id
+    }, status=status.HTTP_201_CREATED)
+
+
+# Check Password Reset Request Status
+@api_view(['GET', 'OPTIONS'])
+@permission_classes([AllowAny])
+def check_password_reset_status(request):
+    """Public endpoint to check if an employee or staff reset request has been approved by admin"""
+    if request.method == 'OPTIONS':
+        return Response(status=status.HTTP_200_OK)
+
+    identifier = (request.query_params.get('identifier') or '').strip()
+    if not identifier:
+        return Response({'error': 'Identifier parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = CustomUser.objects.filter(
+        Q(username__iexact=identifier) | Q(user_id__iexact=identifier)
+    ).first()
+
+    if not user:
+        return Response({'error': 'No account found'}, status=status.HTTP_404_NOT_FOUND)
+
+    latest_req = PasswordResetRequest.objects.filter(user=user).first()
+    if not latest_req:
+        return Response({'has_request': False, 'message': 'No password reset requests found.'})
+
+    return Response({
+        'has_request': True,
+        'status': latest_req.status,
+        'created_at': latest_req.created_at,
+        'reviewed_at': latest_req.reviewed_at,
+        'admin_notes': latest_req.admin_notes,
+        'default_password_hint': f'Your Employee ID ({user.user_id})' if latest_req.status == 'approved' else None,
+        'user_id': user.user_id,
+        'username': user.username
+    })
+
+
+# Admin Password Reset Requests ViewSet
+class AdminPasswordResetViewSet(viewsets.ModelViewSet):
+    """ViewSet for Admin to view, approve, and reject password reset requests"""
+    queryset = PasswordResetRequest.objects.select_related('user', 'reviewed_by').all()
+    serializer_class = PasswordResetRequestSerializer
+    permission_classes = [IsAdmin]
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Approve password reset request and set password to user's default employee user_id"""
+        reset_req = self.get_object()
+        reset_req.approve(request.user)
+        return Response({
+            'status': 'success',
+            'message': f'Approved! Password for {reset_req.user.username} has been reset to their default Employee ID ({reset_req.user.user_id or "Password123!"}).',
+            'user_id': reset_req.user.user_id,
+            'username': reset_req.user.username
+        })
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Reject password reset request"""
+        reset_req = self.get_object()
+        notes = request.data.get('notes', '')
+        reset_req.reject(request.user, notes)
+        return Response({
+            'status': 'success',
+            'message': f'Password reset request for {reset_req.user.username} has been rejected.'
+        })
+

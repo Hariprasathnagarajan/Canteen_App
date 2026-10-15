@@ -1,46 +1,42 @@
 import { useAuth } from '../context/AuthContext';
-import { LogOut } from 'lucide-react';
+import { LogOut, Loader2 } from 'lucide-react';
 
 const LogoutButton = ({ className = '', variant = 'ghost', size = 'default', showLabel = true }) => {
   const { logout, loading } = useAuth();
 
   const handleLogout = async () => {
     try {
-      await logout(); // Handles navigation and toast centrally
+      await logout();
     } catch (error) {
       console.error('Logout error:', error);
     }
   };
 
-  const buttonClasses = `
-    ${variant === 'ghost' 
-      ? 'text-gray-700 hover:bg-gray-100' 
-      : 'bg-red-600 text-white hover:bg-red-700'}
-    ${size === 'sm' ? 'px-3 py-1.5 text-sm' : 'px-4 py-2'}
-    inline-flex items-center rounded-md border border-transparent font-medium
-    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500
-    transition-colors duration-200 ${className}
-  `;
+  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-xl transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 active:scale-95';
+  
+  const variantStyles = variant === 'ghost'
+    ? 'text-slate-600 hover:text-red-600 hover:bg-red-50/80 border border-transparent hover:border-red-100 focus:ring-red-500'
+    : 'bg-red-600 text-white hover:bg-red-700 shadow-sm shadow-red-500/20 focus:ring-red-500';
+
+  const sizeStyles = size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3.5 py-2 text-sm';
 
   return (
     <button
       onClick={handleLogout}
       disabled={loading}
-      className={buttonClasses}
+      className={`${baseStyles} ${variantStyles} ${sizeStyles} ${className} disabled:opacity-50 disabled:cursor-not-allowed`}
       aria-label="Log out"
+      title="Log out"
     >
       {loading ? (
         <>
-          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          {showLabel && 'Logging out...'}
+          <Loader2 className={`animate-spin ${showLabel ? 'mr-1.5' : ''} h-4 w-4`} />
+          {showLabel && <span>Logging out...</span>}
         </>
       ) : (
         <>
-          <LogOut className={`${showLabel ? 'mr-2' : ''} h-4 w-4`} />
-          {showLabel && 'Log out'}
+          <LogOut className={`${showLabel ? 'mr-1.5' : ''} h-4 w-4`} />
+          {showLabel && <span>Log out</span>}
         </>
       )}
     </button>

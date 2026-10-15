@@ -1,10 +1,12 @@
 import axios from 'axios';
 import { getCSRFToken as getCSRFTokenFromCookie, ensureCSRFCookie } from './cookies';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api';
+const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
+  || (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL)
+  || '/api';
 
 // Initialize API instance
-const api = axios.create({
+export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
   xsrfCookieName: 'csrftoken',
@@ -193,6 +195,20 @@ export const authAPI = {
       'X-Requested-With': 'XMLHttpRequest',
     },
   }),
+  
+  resetPassword: (resetData) => api.post('/password_reset/', resetData, {
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+  }),
+
+  requestPasswordReset: (requestData) => api.post('/password_reset/request/', requestData, {
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+  }),
+
+  checkPasswordResetStatus: (identifier) => api.get(`/password_reset/status/?identifier=${encodeURIComponent(identifier)}`),
 };
 
 // Employee API
@@ -200,6 +216,7 @@ export const employeeAPI = {
   getMenu: () => api.get('/employee/menu/'),
   placeOrder: (orderData) => api.post('/employee/order/', orderData),
   getOrders: () => api.get('/employee/orders/'),
+  getProfile: () => api.get('/profile/'),
 };
 
 // Guest API
@@ -207,6 +224,7 @@ export const guestAPI = {
   getMenu: () => api.get('/guest/menu/'),
   placeOrder: (orderData) => api.post('/guest/order/', orderData),
   getOrders: () => api.get('/guest/orders/'),
+  getProfile: () => api.get('/profile/'),
 };
 
 
@@ -241,6 +259,26 @@ export const adminAPI = {
   
   deleteUser: async (userId) => {
     const response = await api.delete(`/admin/users/${userId}/`);
+    return response;
+  },
+  
+  resetUserPassword: async (userId, data = {}) => {
+    const response = await api.post(`/admin/users/${userId}/reset-password/`, data);
+    return response;
+  },
+
+  getPasswordResetRequests: async () => {
+    const response = await api.get('/admin/password-resets/');
+    return response;
+  },
+
+  approvePasswordReset: async (requestId) => {
+    const response = await api.post(`/admin/password-resets/${requestId}/approve/`);
+    return response;
+  },
+
+  rejectPasswordReset: async (requestId, data = {}) => {
+    const response = await api.post(`/admin/password-resets/${requestId}/reject/`, data);
     return response;
   },
   

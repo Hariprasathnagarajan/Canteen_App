@@ -6,9 +6,12 @@ import Navbar from './components/Navbar';
 import { Loader2 } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { getDefaultRoute } from './utils/routes';
 
 // Pages
 import Login from './pages/Login';
+import ResetPassword from './pages/ResetPassword';
+import Unauthorized from './pages/Unauthorized';
 
 // Employee Pages
 import EmployeeMenu from './pages/Employee/Menu';
@@ -56,20 +59,14 @@ const Layout = ({ children }) => {
   );
 };
 
-// Helper function to get default route based on role
-export const getDefaultRoute = (role) => {
-  switch (role) {
-    case 'admin':
-      return '/admin/users';
-    case 'staff':
-      return '/staff/orders';
-    case 'employee':
-      return '/employee/menu';
-    case 'guest':
-      return '/guest/menu';
-    default:
-      return '/login';
+
+const RoleBasedRedirect = () => {
+  const { user, isAuthenticated, loading } = useAuth();
+  if (loading) return <LoadingFallback />;
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />;
   }
+  return <Navigate to={getDefaultRoute(user.role)} replace />;
 };
 
 // Main App Component
@@ -91,21 +88,9 @@ const App = () => {
           <Routes>
               {/* Public Routes */}
               <Route path="/login" element={<Login />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               
-              <Route path="/unauthorized" element={
-                <Layout>
-                  <div className="text-center py-12">
-                    <h1 className="text-4xl font-bold text-gray-900 mb-4">403 - Unauthorized</h1>
-                    <p className="text-xl text-gray-600 mb-6">You don't have permission to access this page</p>
-                    <Link 
-                      to="/" 
-                      className="text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      Go back home
-                    </Link>
-                  </div>
-                </Layout>
-              } />
+              <Route path="/unauthorized" element={<Unauthorized />} />
               
               {/* Employee Routes */}
               <Route path="/employee/menu" element={
@@ -211,13 +196,7 @@ const App = () => {
               } />
 
               {/* Default redirect based on role */}
-              <Route path="/" element={
-                <ProtectedRoute showLoading={false}>
-                  {({ user }) => (
-                    <Navigate to={user ? getDefaultRoute(user.role) : '/login'} replace />
-                  )}
-                </ProtectedRoute>
-              } />
+              <Route path="/" element={<RoleBasedRedirect />} />
               
               {/* Catch all route */}
               <Route path="*" element={

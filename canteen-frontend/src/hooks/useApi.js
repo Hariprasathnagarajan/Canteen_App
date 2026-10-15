@@ -72,7 +72,7 @@ export const useApi = (options = {}) => {
     onSuccess, 
     onError,
     defaultErrorMessage = 'An error occurred',
-    logRequests = process.env.NODE_ENV !== 'production',
+    logRequests = (typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV)) || (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') || false,
     skipIfLoading = true, // Default to true to prevent duplicate requests
     showErrorToast = true
   } = options;

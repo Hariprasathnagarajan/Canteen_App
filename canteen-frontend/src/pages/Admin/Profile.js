@@ -1,5 +1,6 @@
 import { User, Badge } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import PasswordChangeCard from '../../components/PasswordChangeCard';
 
 const AdminProfile = () => {
   const { user } = useAuth();
@@ -56,6 +57,9 @@ const AdminProfile = () => {
 
           </div>
         </div>
+
+        {/* Change Password / Reset Module */}
+        <PasswordChangeCard />
       </div>
 
     </div>

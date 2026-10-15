@@ -39,41 +39,39 @@ const GuestMenu = () => {
   }, [searchTerm, menuItems]);
 
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial) setLoading(true);
       
-      const [menuData, userData] = await Promise.all([
-        guestAPI.getMenu().catch(() => menuItems),
+      const [menuRes, userRes] = await Promise.all([
+        guestAPI.getMenu().catch(() => null),
         guestAPI.getProfile().catch(() => null)
       ]);
 
-      if (menuData) {
-        setMenuItems(menuData);
-        if (searchTerm === '') {
-          setFilteredItems(menuData);
-        }
+      if (menuRes?.data) {
+        const items = Array.isArray(menuRes.data.results)
+          ? menuRes.data.results
+          : (Array.isArray(menuRes.data) ? menuRes.data : []);
+        setMenuItems(items);
       }
-      if (userData) {
-        updateUser(userData);
+      if (userRes?.data && updateUser) {
+        updateUser(userRes.data);
       }
 
     } catch (error) {
       console.error('Data loading error:', error);
-      if (menuItems.length === 0) {
-        showMessage('Failed to load initial data. Please refresh.', 'error');
-      }
+      showMessage('Failed to load menu data. Please refresh.', 'error');
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
-  }, [menuItems, searchTerm, updateUser, showMessage]);
+  }, [updateUser, showMessage]);
 
   useEffect(() => {
-    loadData();
+    loadData(true);
 
     refreshIntervalRef.current = setInterval(() => {
-      loadData();
-    }, POLLING_INTERVAL);
+      loadData(false);
+    }, 15000);
 
     return () => {
       clearInterval(refreshIntervalRef.current);
@@ -156,7 +154,8 @@ const GuestMenu = () => {
       }
     } catch (error) {
       console.error('Order error:', error);
-      showMessage(error.message || 'Failed to place order. Please try again.', 'error');
+      const errMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to place order. Please try again.';
+      showMessage(errMsg, 'error');
     } finally {
       setPlacing(false);
     }

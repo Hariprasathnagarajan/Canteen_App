@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import CustomUser, MenuItem, Order, OrderItem, ShiftTokenAllocation, TokenDistribution
+from .models import CustomUser, MenuItem, Order, OrderItem, ShiftTokenAllocation, TokenDistribution, PasswordResetRequest
 
 class CustomUserCreateSerializer(serializers.ModelSerializer):
     role = serializers.ChoiceField(choices=CustomUser.ROLE_CHOICES)
@@ -18,13 +18,17 @@ class CustomUserCreateSerializer(serializers.ModelSerializer):
 
 class CustomUserSerializer(serializers.ModelSerializer):
     tokens = serializers.SerializerMethodField()
+    name = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'role', 'work_shift', 'user_id', 'tokens']
+        fields = ['id', 'username', 'first_name', 'last_name', 'name', 'email', 'role', 'work_shift', 'user_id', 'tokens']
         extra_kwargs = {
             'tokens': {'read_only': True}
         }
+
+    def get_name(self, obj):
+        return obj.get_full_name() or obj.username
 
     def get_tokens(self, obj):
         # Don't return tokens for admin and staff users
@@ -120,5 +124,28 @@ class TokenDistributionSerializer(serializers.ModelSerializer):
     class Meta:
         model = TokenDistribution
         fields = ['id', 'user', 'user_username', 'tokens_allocated', 'allocation_month']
+
+
+class PasswordResetRequestSerializer(serializers.ModelSerializer):
+    user_details = serializers.SerializerMethodField()
+    reviewed_by_username = serializers.CharField(source='reviewed_by.username', read_only=True)
+
+    class Meta:
+        model = PasswordResetRequest
+        fields = [
+            'id', 'user', 'user_details', 'reason', 'status',
+            'created_at', 'reviewed_at', 'reviewed_by_username', 'admin_notes'
+        ]
+        read_only_fields = ['status', 'created_at', 'reviewed_at', 'reviewed_by_username', 'admin_notes']
+
+    def get_user_details(self, obj):
+        return {
+            'username': obj.user.username,
+            'name': obj.user.get_full_name() or obj.user.username,
+            'email': obj.user.email,
+            'role': obj.user.role,
+            'work_shift': obj.user.work_shift,
+            'user_id': obj.user.user_id,
+        }
 
 
