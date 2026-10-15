@@ -1,9 +1,31 @@
 import axios from 'axios';
 import { getCSRFToken as getCSRFTokenFromCookie, ensureCSRFCookie } from './cookies';
 
-const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
-  || (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL)
-  || 'https://canteen-app-l261.onrender.com/api';
+// Determine and normalize API_BASE_URL safely
+const resolveApiBaseUrl = () => {
+  let url = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL)
+    || (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL)
+    || 'https://canteen-app-l261.onrender.com/api';
+
+  // If running on Netlify and url is relative /api or missing, direct to Render production backend
+  if (typeof window !== 'undefined' && window.location.hostname.includes('netlify.app')) {
+    if (!url || url === '/api' || !url.startsWith('http')) {
+      url = 'https://canteen-app-l261.onrender.com/api';
+    }
+  }
+
+  // Remove trailing slashes
+  url = url.trim().replace(/\/+$/, '');
+
+  // Ensure /api suffix is present on absolute HTTP URLs
+  if (url.startsWith('http') && !url.endsWith('/api')) {
+    url = `${url}/api`;
+  }
+
+  return url;
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 // Initialize API instance
 export const api = axios.create({

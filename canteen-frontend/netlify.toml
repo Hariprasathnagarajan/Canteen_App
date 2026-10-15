@@ -2,6 +2,13 @@
   publish = "dist"
   command = "npm run build"
 
+# Proxy /api requests to Render backend
+[[redirects]]
+  from = "/api/*"
+  to = "https://canteen-app-l261.onrender.com/api/:splat"
+  status = 200
+  force = true
+
 # SPA redirect fallback to index.html for client-side routing
 [[redirects]]
   from = "/*"

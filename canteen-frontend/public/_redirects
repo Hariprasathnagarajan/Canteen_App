@@ -1,3 +1,5 @@
+# Proxy /api requests to Render backend if called via relative path
+/api/*  https://canteen-app-l261.onrender.com/api/:splat  200
+
 # Netlify Single Page Application (SPA) redirect rule
-# Ensures client-side routing works seamlessly when refreshing or directly visiting pages like /login, /admin/users, /employee/menu, etc.
 /*    /index.html   200

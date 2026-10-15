@@ -210,12 +210,21 @@ export const AuthProvider = ({ children }) => {
       return { success: true, user: activeUser };
     } catch (error) {
       console.error('Login failed:', error);
-      const errorMessage =
+      let errorMessage =
         error.response?.data?.detail ||
         error.response?.data?.message ||
-        error.response?.data?.error ||
-        error.message ||
-        'Login failed. Please check your credentials.';
+        error.response?.data?.error;
+
+      if (!errorMessage) {
+        if (error.response?.status === 404) {
+          errorMessage = 'Backend service endpoint not found (404). Please verify that the backend at canteen-app-l261.onrender.com has finished deploying.';
+        } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+          errorMessage = 'Cannot reach backend server. On Render free tier, the service may take ~30-50 seconds to wake up from sleep. Please wait a moment and try again.';
+        } else {
+          errorMessage = error.message || 'Login failed. Please check your credentials.';
+        }
+      }
+
       setError(errorMessage);
       setUser(null);
       setIsAuthenticated(false);
