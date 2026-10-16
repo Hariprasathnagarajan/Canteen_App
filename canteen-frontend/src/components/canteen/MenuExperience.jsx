@@ -119,7 +119,7 @@ export default function MenuExperience({ api, serviceNote }) {
           kicker={serviceNote}
           title="Today's menu"
           hint="Plating up… fetching the freshest items from the kitchen."
-          right={<TokenPill value={balance} />}
+          right={<div className="hidden sm:block"><TokenPill value={balance} /></div>}
         />
         <MenuSkeleton count={6} />
       </div>
@@ -137,7 +137,9 @@ export default function MenuExperience({ api, serviceNote }) {
             <span className="inline-flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-bold text-green-800">
               <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-green-600" /> Kitchen live
             </span>
-            <TokenPill value={balance} />
+            <div className="hidden sm:block">
+              <TokenPill value={balance} />
+            </div>
           </div>
         }
       />

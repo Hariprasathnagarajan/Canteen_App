@@ -4,17 +4,42 @@ from django.contrib.auth import authenticate
 from .models import CustomUser, MenuItem, Order, OrderItem, ShiftTokenAllocation, TokenDistribution, PasswordResetRequest
 
 class CustomUserCreateSerializer(serializers.ModelSerializer):
-    role = serializers.ChoiceField(choices=CustomUser.ROLE_CHOICES)
+    role = serializers.ChoiceField(choices=CustomUser.ROLE_CHOICES, default='employee')
+    user_id = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=20)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = CustomUser
         fields = ['username', 'user_id', 'first_name', 'last_name', 'email', 'role', 'work_shift']
 
+    def validate_username(self, value):
+        val = (value or '').strip()
+        if not val:
+            raise serializers.ValidationError('Username is required.')
+        if CustomUser.objects.filter(username__iexact=val).exists():
+            raise serializers.ValidationError('A user with that username already exists.')
+        return val
+
+    def validate_user_id(self, value):
+        if not value or not str(value).strip():
+            return None
+        val = str(value).strip()
+        if CustomUser.objects.filter(user_id__iexact=val).exists():
+            raise serializers.ValidationError('A user with this User ID already exists.')
+        return val
+
     def create(self, validated_data):
         user_id = validated_data.get('user_id')
+        if not user_id:
+            user_id = None
+            validated_data['user_id'] = None
+
+        role = validated_data.get('role', 'employee')
         user = CustomUser(**validated_data)
-        if user_id:
-            user.set_password(user_id)
+
+        initial_password = user_id if user_id else user.username
+        user.set_password(initial_password)
+
         if user.role == 'employee':
             shift_limits = {'day': 50, 'mid': 75, 'night': 100}
             user.monthly_tokens = shift_limits.get(user.work_shift, 50)
@@ -22,12 +47,18 @@ class CustomUserCreateSerializer(serializers.ModelSerializer):
         elif user.role == 'guest':
             user.monthly_tokens = 30
             user.last_token_reset = timezone.now().date().replace(day=1)
+        elif user.role == 'staff':
+            user.is_staff = True
+            user.monthly_tokens = 0
+
         user.save()
         return user
 
 class CustomUserSerializer(serializers.ModelSerializer):
     tokens = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
+    user_id = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=20)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = CustomUser
@@ -35,6 +66,15 @@ class CustomUserSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'tokens': {'read_only': True}
         }
+
+    def validate_user_id(self, value):
+        if not value or not str(value).strip():
+            return None
+        val = str(value).strip()
+        user_pk = self.instance.pk if self.instance else None
+        if CustomUser.objects.filter(user_id__iexact=val).exclude(pk=user_pk).exists():
+            raise serializers.ValidationError('A user with this User ID already exists.')
+        return val
 
     def get_name(self, obj):
         return obj.get_full_name() or obj.username

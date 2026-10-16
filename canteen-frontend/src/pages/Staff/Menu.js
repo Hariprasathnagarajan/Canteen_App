@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit2, Trash2, Save, X } from 'lucide-react';
 import { staffAPI } from '../../utils/api';
+import { toast } from 'react-toastify';
 
 const MenuForm = ({ editingItem, formData, setFormData, handleSubmit, resetForm }) => (
   <div className="p-4 mb-4 bg-white shadow-sm rounded-xl">
@@ -132,14 +133,17 @@ const StaffMenu = () => {
           item.id === editingItem.id ? { ...item, ...payload } : item
         ));
         setEditingItem(null);
+        toast.success('Menu item updated successfully');
       } else {
         const response = await staffAPI.createMenuItem(payload);
         setMenuItems([response.data, ...menuItems]);
         setShowAddForm(false);
+        toast.success('Menu item added successfully');
       }
       resetForm();
     } catch (error) {
       console.error('Error saving menu item:', error);
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Error saving menu item');
     }
   };
 
@@ -159,8 +163,10 @@ const StaffMenu = () => {
       try {
         await staffAPI.deleteMenuItem(id);
         setMenuItems(menuItems.filter(item => item.id !== id));
+        toast.success('Menu item deleted');
       } catch (error) {
         console.error('Error deleting menu item:', error);
+        toast.error('Failed to delete menu item');
       }
     }
   }
@@ -197,12 +203,14 @@ const StaffMenu = () => {
       setMenuItems(menuItems.map(item =>
         item.id === id ? { ...item, is_available: newStatus } : item
       ));
+      toast.success(`"${itemToUpdate.name}" is now ${newStatus ? 'available' : 'unavailable'}`);
     } catch (error) {
       console.error('Error updating availability:', error);
       // Revert UI if API call fails
       setMenuItems(menuItems.map(item =>
         item.id === id ? { ...item, is_available: currentStatus } : item
       ));
+      toast.error('Failed to update item availability');
     }
   };
 
@@ -274,7 +282,7 @@ const StaffMenu = () => {
                   
                   <p className="mb-4 text-sm text-gray-600">{item.description}</p>
                   
-                  <div className="flex justify-space-between space-x-2">
+                  <div className="flex justify-between items-center space-x-2 border-t border-stone-100 pt-3">
                     <button
                       onClick={() => handleEdit(item)}
                       className="btn-tactile flex items-center px-3 py-1 space-x-1 text-ember-700 transition-colors rounded-lg hover:text-ember-800 hover:bg-ember-50"

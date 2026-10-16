@@ -223,7 +223,7 @@ const AdminTokens = () => {
             const roleColor = getRoleBadgeColor(user.role);
             return (
               <li key={user.id} className="px-4 py-4 sm:px-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center space-x-2">

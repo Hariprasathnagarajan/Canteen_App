@@ -117,14 +117,14 @@ const Login = () => {
             <p className="mt-8 font-mono-tokens text-[11px] font-semibold uppercase tracking-[0.22em] text-ember-600">
               Today's kitchen · 07:30 – 21:00
             </p>
-            <h1 className="mt-2 text-4xl font-bold leading-none tracking-tighter text-balance md:text-6xl">
+            <h1 className="mt-2 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:text-6xl sm:tracking-tighter text-balance">
               Lunch, sorted before the queue forms.
             </h1>
-            <p className="mt-3 max-w-[52ch] text-base leading-relaxed text-ink-mute">
+            <p className="mt-2.5 sm:mt-3 max-w-[52ch] text-sm sm:text-base leading-relaxed text-ink-mute">
               Order from today's menu with tokens, track the pass in real time, and pick up without waiting. Built for employees, guests and the crew behind the counter.
             </p>
 
-            <div className="mt-8 rounded-4xl border border-stone-200/80 bg-white p-6 shadow-card sm:p-7">
+            <div className="mt-6 sm:mt-8 rounded-3xl sm:rounded-4xl border border-stone-200/80 bg-white p-5 sm:p-7 shadow-card">
               {(formError || authError) && (
                 <div className="mb-5 flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 p-3.5 text-sm text-red-800" role="alert">
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />

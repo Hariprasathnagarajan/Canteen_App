@@ -68,7 +68,6 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
       <div>
         <label className="block mb-1 text-sm font-medium text-gray-700">Work Shift</label>
         <select
-          defaultValue="day"
           value={formData.work_shift}
           onChange={(e) => setFormData({ ...formData, work_shift: e.target.value })}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
@@ -82,7 +81,6 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
       <div>
         <label className="block mb-1 text-sm font-medium text-gray-700">Role</label>
         <select
-          defaultValue="employee"
           value={formData.role}
           onChange={(e) => setFormData({ ...formData, role: e.target.value })}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
@@ -145,33 +143,57 @@ const AdminUsers = () => {
     fetchUsers();
   }, [fetchUsers]);
 
+const formatApiError = (error) => {
+  if (!error?.response?.data) return error.message || 'Error saving user';
+  const data = error.response.data;
+  if (typeof data === 'string') return data;
+  if (data.detail) return data.detail;
+  if (data.error) return data.error;
+  if (data.message) return data.message;
+  if (typeof data === 'object') {
+    const msgs = Object.entries(data).map(([field, err]) => {
+      const errStr = Array.isArray(err) ? err.join(' ') : String(err);
+      const fieldName = field.replace('_', ' ');
+      return `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}: ${errStr}`;
+    });
+    if (msgs.length) return msgs.join(' • ');
+  }
+  return 'Error saving user. Please check form fields.';
+};
+
 const handleSubmit = async (e) => {
   e.preventDefault();
   try {
+    const payload = {
+      username: formData.username?.trim(),
+      user_id: formData.user_id?.trim() || null,
+      first_name: formData.first_name?.trim() || '',
+      last_name: formData.last_name?.trim() || '',
+      email: formData.email?.trim() || '',
+      role: formData.role || 'employee',
+      work_shift: formData.work_shift || 'day',
+    };
+
     if (editingUser) {
-      const updateData = { ...formData };
-
-      await adminAPI.updateUser(editingUser.id, updateData);
+      await adminAPI.updateUser(editingUser.id, payload);
       setUsers(users.map(user =>
-        user.id === editingUser.id ? { ...user, ...updateData } : user
+        user.id === editingUser.id ? { ...user, ...payload } : user
       ));
-
       setEditingUser(null);
+      toast.success('User updated successfully');
     } else {
-      const response = await adminAPI.createUser(formData);
+      const response = await adminAPI.createUser(payload);
       setUsers([response.data, ...users]);
       setShowAddForm(false);
+      toast.success('User created successfully');
     }
 
     resetForm();
 
   } catch (error) {
     console.error('Error in handleSubmit:', error);
-    if (error.response) {
-      alert(`Error ${error.response.status}: ${error.response.data.detail || JSON.stringify(error.response.data)}`);
-    } else {
-      alert('Error saving user. Please check the details and try again.');
-    }
+    const errMsg = formatApiError(error);
+    toast.error(errMsg);
   }
 };
 
@@ -525,12 +547,12 @@ const handleSubmit = async (e) => {
                 className="flex flex-col p-3 space-y-3 transition-shadow bg-white border rounded-lg hover:shadow-md sm:flex-row sm:items-center sm:justify-between sm:space-y-0"
               >
                 {/* Left: Avatar + Name + Username */}
-                <div className="flex items-center space-x-3">
-                  <div className="flex items-center justify-center w-8 h-8 bg-gray-200 rounded-full">
-                    <UserCheck className={`px-2 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`} />
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center justify-center w-8 h-8 bg-stone-100 rounded-full shrink-0">
+                    <UserCheck className="w-4 h-4 text-stone-600" />
                   </div>
                   <div className="group">
-                    <p className="text-sm w-100 font-medium text-gray-900">
+                    <p className="text-sm font-semibold text-gray-900">
                       {user.first_name} {user.last_name}
                     </p>
                     <p className="text-xs text-gray-500 group-hover:underline" title={`@${user.username}`}>
