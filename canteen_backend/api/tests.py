@@ -145,6 +145,15 @@ class TokenAllocationTests(VDartCafeBaseTestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertIn("day_shift", resp.data)
 
+    def test_assign_tokens_all_shifts(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post("/api/admin/tokens/assign/", {"shift": "all"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.monthly_tokens, 50)  # Day shift baseline 50
+        self.guest.refresh_from_db()
+        self.assertEqual(self.guest.monthly_tokens, 50)  # Guest day shift baseline 50
+
 
 # ---------------------------------------------------------
 # 4. Ordering Transactions

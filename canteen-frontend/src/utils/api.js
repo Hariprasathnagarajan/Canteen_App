@@ -306,13 +306,17 @@ export const adminAPI = {
   
   // Token Management
   
-  assignTokens: async (shift) => {
+  assignTokens: async (shift, tokens = null) => {
     const endpoint = '/admin/tokens/assign/';
     try {
       // Remove _shift suffix if present to match backend expectations
-      const normalizedShift = shift.replace(/_shift$/, '');
-      console.log(`[API] Assigning tokens for shift: ${normalizedShift}`);
-      const response = await api.post(endpoint, { shift: normalizedShift });
+      const normalizedShift = typeof shift === 'string' ? shift.replace(/_shift$/, '') : shift;
+      console.log(`[API] Assigning tokens for shift: ${normalizedShift}`, tokens ? `(amount: ${tokens})` : '(default quota)');
+      const payload = { shift: normalizedShift };
+      if (tokens !== null && tokens !== undefined && !isNaN(Number(tokens))) {
+        payload.tokens = Number(tokens);
+      }
+      const response = await api.post(endpoint, payload);
       
       console.log(`[API] Tokens assigned successfully for ${shift} shift:`, {
         status: response.status,
@@ -334,6 +338,18 @@ export const adminAPI = {
       });
       
       // Re-throw the error to be handled by the caller
+      throw error;
+    }
+  },
+
+  assignAllTokens: async () => {
+    const endpoint = '/admin/tokens/assign/';
+    try {
+      console.log('[API] Triggering bulk token assignment for all shifts');
+      const response = await api.post(endpoint, { shift: 'all' });
+      return response;
+    } catch (error) {
+      console.error('[API] Error in bulk token assignment:', error);
       throw error;
     }
   },

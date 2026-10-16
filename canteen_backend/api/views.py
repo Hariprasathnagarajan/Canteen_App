@@ -526,13 +526,50 @@ def assign_tokens(request):
     # Normalize shift if it comes with '_shift' suffix
     shift = shift.replace('_shift', '')
     
+    shift_limits = {'day': 50, 'mid': 75, 'night': 100}
+
+    # Support allocating all shifts in a single atomic transaction
+    if shift == 'all':
+        with transaction.atomic():
+            month_start = timezone.now().date().replace(day=1)
+            total_updated = 0
+            details = {}
+            for s in ['day', 'mid', 'night']:
+                amt = shift_limits[s]
+                allocation, _ = ShiftTokenAllocation.objects.get_or_create(
+                    shift=s,
+                    allocation_month=month_start,
+                    defaults={'tokens_per_user': amt}
+                )
+                allocation.tokens_per_user = amt
+                allocation.save()
+
+                users_in_shift = CustomUser.objects.filter(
+                    work_shift=s,
+                    role__in=['employee', 'guest']
+                )
+                for u in users_in_shift:
+                    if u.role == 'guest':
+                        u.monthly_tokens = amt
+                        u.save(update_fields=['monthly_tokens'])
+                cnt = users_in_shift.count()
+                total_updated += cnt
+                details[s] = {'tokens': amt, 'users': cnt}
+
+            return Response({
+                'status': 'success',
+                'message': f'Successfully allocated monthly tokens across all shifts ({total_updated} users updated).',
+                'updated': total_updated,
+                'details': details,
+                'allocation_month': month_start.strftime('%Y-%m-%d')
+            })
+
     if not shift or shift not in ['day', 'mid', 'night']:
         return Response(
-            {'error': f'Invalid shift "{shift}". Must be day, mid, or night.'}, 
+            {'error': f'Invalid shift "{shift}". Must be day, mid, night, or all.'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    shift_limits = {'day': 50, 'mid': 75, 'night': 100}
     token_amount = request.data.get('tokens')
     try:
         token_amount = int(token_amount) if token_amount is not None else shift_limits[shift]
@@ -557,6 +594,10 @@ def assign_tokens(request):
             work_shift=shift,
             role__in=['employee', 'guest']
         )
+        for u in users_in_shift:
+            if u.role == 'guest':
+                u.monthly_tokens = token_amount
+                u.save(update_fields=['monthly_tokens'])
         updated_count = users_in_shift.count()
 
         return Response({
@@ -567,21 +608,6 @@ def assign_tokens(request):
             'shift': shift,
             'allocation_month': month_start.strftime('%Y-%m-%d')
         })
-    
-    users = CustomUser.objects.filter(
-        work_shift=shift,
-        role__in=['employee', 'guest']
-    )
-
-    # Bulk update tokens for users in the shift
-    updated = users.update(monthly_tokens=shift_limits[shift])
-
-    return Response({
-        'status': 'success',
-        'updated': updated,
-        'tokens_assigned': shift_limits[shift],
-        'shift': shift
-    })
 
 @api_view(['GET'])
 @permission_classes([IsAdmin])

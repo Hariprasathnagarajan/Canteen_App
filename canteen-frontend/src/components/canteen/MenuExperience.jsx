@@ -154,33 +154,33 @@ export default function MenuExperience({ api, serviceNote }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-[1fr_280px]">
         <label className="relative block">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-mute" strokeWidth={2} />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" strokeWidth={2} />
           <input
             ref={searchInputRef}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Craving something? Try sambar, biryani, curd…"
-            className="w-full rounded-2xl border border-stone-200 bg-white py-3.5 pl-12 pr-12 text-[15px] text-ink shadow-card outline-none transition-all placeholder:text-stone-400 focus:border-ember-500 focus:ring-4 focus:ring-ember-500/10"
+            className="w-full rounded-2xl border border-stone-200 bg-white py-2.5 pl-11 pr-11 text-xs sm:text-sm text-ink shadow-sm outline-none transition-all placeholder:text-stone-400 focus:border-ember-500 focus:ring-4 focus:ring-ember-500/10"
           />
           {searchTerm && (
             <button
               onClick={() => { setSearchTerm(''); searchInputRef.current?.focus(); }}
-              className="btn-tactile absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-cream-dark text-ink-mute hover:text-ink"
+              className="btn-tactile absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-cream-dark text-ink-mute hover:text-ink"
               aria-label="Clear search"
             >
-              <X className="h-4 w-4" strokeWidth={2.2} />
+              <X className="h-3.5 w-3.5" strokeWidth={2.2} />
             </button>
           )}
         </label>
-        <div className="flex items-center gap-3 rounded-2xl border border-stone-200/70 bg-white px-4 py-3 shadow-card">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cream-dark">
-            <UtensilsCrossed className="h-5 w-5 text-ember-700" strokeWidth={2} />
+        <div className="flex items-center gap-3 rounded-2xl border border-stone-200/70 bg-white px-3.5 py-2 shadow-sm">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cream-dark shrink-0">
+            <UtensilsCrossed className="h-4 w-4 text-ember-700" strokeWidth={2} />
           </span>
           <div className="leading-tight">
-            <p className="font-mono-tokens text-lg font-bold text-ink">{filteredItems.length}</p>
-            <p className="text-xs text-ink-mute">dishes available now</p>
+            <p className="font-mono-tokens text-base font-bold text-ink">{filteredItems.length}</p>
+            <p className="text-[11px] text-ink-mute">dishes available now</p>
           </div>
           <span className="ml-auto font-mono-tokens text-[11px] uppercase tracking-[0.14em] text-ink-mute">
             {count} in thali
@@ -223,7 +223,7 @@ export default function MenuExperience({ api, serviceNote }) {
           )}
         />
       ) : (
-        <motion.div layout className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-12">
+        <motion.div layout className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-3.5">
           <AnimatePresence mode="popLayout">
             {filteredItems.map((item, idx) => (
               <MenuCard
@@ -233,7 +233,6 @@ export default function MenuExperience({ api, serviceNote }) {
                 qty={qtyOf(item.id)}
                 onAdd={addToCart}
                 onRemove={removeFromCart}
-                featured={idx === 0 && filteredItems.length > 3}
               />
             ))}
           </AnimatePresence>
