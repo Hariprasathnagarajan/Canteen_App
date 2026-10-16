@@ -9,10 +9,10 @@ const SectionHeading = memo(function SectionHeading({ kicker, title, hint, right
             {kicker}
           </p>
         )}
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tighter leading-none text-balance text-ink">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight sm:tracking-tighter leading-none text-balance text-ink">
           {title}
         </h1>
-        {hint && <p className="mt-2 text-base leading-relaxed text-ink-mute max-w-[65ch]">{hint}</p>}
+        {hint && <p className="mt-2 text-sm sm:text-base leading-relaxed text-ink-mute max-w-[65ch]">{hint}</p>}
       </div>
       {right && <div className="shrink-0">{right}</div>}
     </div>

@@ -1,5 +1,5 @@
 """
-VCafe Automated Test Suite
+VDart Cafe Automated Test Suite
 Covers:
   1. Authentication & Sessions
   2. Role-Based Access Control (RBAC)
@@ -22,24 +22,24 @@ from api.models import (
 # ---------------------------------------------------------
 # Base test setup - shared fixtures for all test classes
 # ---------------------------------------------------------
-class VCafeBaseTestCase(APITestCase):
+class VDartCafeBaseTestCase(APITestCase):
     def setUp(self):
         self.client = APIClient()
 
         self.admin = CustomUser.objects.create_superuser(
-            username="admin_test", user_id="ADM001", email="admin@vcafe.com",
+            username="admin_test", user_id="ADM001", email="admin@vdartcafe.com",
             password="AdminPassword123!", role="admin",
         )
         self.staff = CustomUser.objects.create_user(
-            username="staff_test", user_id="STF001", email="staff@vcafe.com",
+            username="staff_test", user_id="STF001", email="staff@vdartcafe.com",
             password="StaffPassword123!", role="staff",
         )
         self.employee = CustomUser.objects.create_user(
-            username="emp_test", user_id="EMP001", email="emp@vcafe.com",
+            username="emp_test", user_id="EMP001", email="emp@vdartcafe.com",
             password="EmpPassword123!", role="employee", work_shift="day", monthly_tokens=50,
         )
         self.guest = CustomUser.objects.create_user(
-            username="guest_test", user_id="GST001", email="guest@vcafe.com",
+            username="guest_test", user_id="GST001", email="guest@vdartcafe.com",
             password="GuestPassword123!", role="guest", work_shift="day", monthly_tokens=30,
         )
         self.coffee = MenuItem.objects.create(
@@ -59,7 +59,7 @@ class VCafeBaseTestCase(APITestCase):
 # ---------------------------------------------------------
 # 1. Authentication & Sessions
 # ---------------------------------------------------------
-class AuthenticationTests(VCafeBaseTestCase):
+class AuthenticationTests(VDartCafeBaseTestCase):
 
     def test_login_success(self):
         resp = self.client.post("/api/login/", {"username": "emp_test", "password": "EmpPassword123!"})
@@ -91,7 +91,7 @@ class AuthenticationTests(VCafeBaseTestCase):
 # ---------------------------------------------------------
 # 2. Role-Based Access Control
 # ---------------------------------------------------------
-class RBACTests(VCafeBaseTestCase):
+class RBACTests(VDartCafeBaseTestCase):
 
     def test_employee_cannot_access_admin_users_list(self):
         self.client.force_authenticate(user=self.employee)
@@ -117,12 +117,12 @@ class RBACTests(VCafeBaseTestCase):
 # ---------------------------------------------------------
 # 3. Token Allocation & Management
 # ---------------------------------------------------------
-class TokenAllocationTests(VCafeBaseTestCase):
+class TokenAllocationTests(VDartCafeBaseTestCase):
 
     def test_new_night_shift_user_gets_100_tokens_automatically(self):
         self.client.force_authenticate(user=self.admin)
         resp = self.client.post("/api/admin/users/", {
-            "username": "night_emp", "user_id": "EMP099", "email": "night@vcafe.com",
+            "username": "night_emp", "user_id": "EMP099", "email": "night@vdartcafe.com",
             "password": "Night123!", "role": "employee", "work_shift": "night",
         })
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
@@ -149,7 +149,7 @@ class TokenAllocationTests(VCafeBaseTestCase):
 # ---------------------------------------------------------
 # 4. Ordering Transactions
 # ---------------------------------------------------------
-class OrderingTransactionTests(VCafeBaseTestCase):
+class OrderingTransactionTests(VDartCafeBaseTestCase):
 
     def test_employee_place_valid_order_deducts_tokens(self):
         self.client.force_authenticate(user=self.employee)
@@ -208,7 +208,7 @@ class OrderingTransactionTests(VCafeBaseTestCase):
 # ---------------------------------------------------------
 # 5. Kitchen Workflow & Token Refunds
 # ---------------------------------------------------------
-class KitchenWorkflowTests(VCafeBaseTestCase):
+class KitchenWorkflowTests(VDartCafeBaseTestCase):
 
     def setUp(self):
         super().setUp()
@@ -277,12 +277,12 @@ class KitchenWorkflowTests(VCafeBaseTestCase):
 # ---------------------------------------------------------
 # 6. Password Reset Security
 # ---------------------------------------------------------
-class PasswordResetSecurityTests(VCafeBaseTestCase):
+class PasswordResetSecurityTests(VDartCafeBaseTestCase):
 
     # Public self-service reset
     def test_employee_can_self_service_reset(self):
         resp = self.client.post("/api/password_reset/", {
-            "identifier": "emp_test", "email": "emp@vcafe.com",
+            "identifier": "emp_test", "email": "emp@vdartcafe.com",
             "new_password": "FreshPass123!", "confirm_password": "FreshPass123!",
         })
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
@@ -291,7 +291,7 @@ class PasswordResetSecurityTests(VCafeBaseTestCase):
 
     def test_admin_blocked_from_self_service_reset(self):
         resp = self.client.post("/api/password_reset/", {
-            "identifier": "admin_test", "email": "admin@vcafe.com",
+            "identifier": "admin_test", "email": "admin@vdartcafe.com",
             "new_password": "Hacked999!", "confirm_password": "Hacked999!",
         })
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
@@ -307,14 +307,14 @@ class PasswordResetSecurityTests(VCafeBaseTestCase):
     # Admin-approval reset request
     def test_employee_can_submit_reset_request(self):
         resp = self.client.post("/api/password_reset/request/", {
-            "identifier": "emp_test", "email": "emp@vcafe.com", "reason": "Forgot password",
+            "identifier": "emp_test", "email": "emp@vdartcafe.com", "reason": "Forgot password",
         })
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         self.assertTrue(PasswordResetRequest.objects.filter(user=self.employee, status="pending").exists())
 
     def test_admin_blocked_from_submitting_reset_request(self):
         resp = self.client.post("/api/password_reset/request/", {
-            "identifier": "admin_test", "email": "admin@vcafe.com", "reason": "Takeover",
+            "identifier": "admin_test", "email": "admin@vdartcafe.com", "reason": "Takeover",
         })
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn("Admin accounts cannot", resp.data["error"])
@@ -362,7 +362,7 @@ class PasswordResetSecurityTests(VCafeBaseTestCase):
 # ---------------------------------------------------------
 # 7. Admin Dashboard Analytics
 # ---------------------------------------------------------
-class DashboardAnalyticsTests(VCafeBaseTestCase):
+class DashboardAnalyticsTests(VDartCafeBaseTestCase):
 
     def setUp(self):
         super().setUp()

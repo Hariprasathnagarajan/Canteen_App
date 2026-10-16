@@ -11,7 +11,7 @@ const CartDock = memo(function CartDock({ count, total, balance, placing, insuff
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 32, scale: 0.96 }}
           transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-          className="fixed bottom-5 left-1/2 z-40 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2"
+          className="fixed bottom-[calc(4.85rem+env(safe-area-inset-bottom,0px))] lg:bottom-5 left-1/2 z-50 w-[calc(100%-1.25rem)] sm:w-[calc(100%-2rem)] max-w-xl -translate-x-1/2"
         >
           <div className="glass-dock rounded-3xl p-4 pl-5 text-cream">
             <div className="flex items-center gap-4">

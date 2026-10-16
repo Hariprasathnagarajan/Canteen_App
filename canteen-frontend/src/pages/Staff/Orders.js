@@ -64,15 +64,15 @@ const StaffOrders = () => {
         title="Kitchen orders"
         hint="Approve incoming tickets, fire them, and mark pickups complete. Declines refund tokens instantly."
         right={
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 sm:gap-2">
             {[
               { label: 'Pending', v: counts.pending, hot: counts.pending > 0 },
               { label: 'Firing', v: counts.approved },
               { label: 'Done', v: counts.completed },
             ].map((s) => (
-              <div key={s.label} className={`rounded-2xl border px-4 py-2 text-center shadow-card ${s.hot ? 'border-ember-300 bg-ember-50' : 'border-stone-200/70 bg-white'}`}>
-                <p className="font-mono-tokens text-xl font-bold text-ink">{s.v}</p>
-                <p className="flex items-center justify-center gap-1 text-[11px] font-semibold text-ink-mute">
+              <div key={s.label} className={`rounded-2xl border px-2.5 py-1.5 sm:px-4 sm:py-2 text-center shadow-card ${s.hot ? 'border-ember-300 bg-ember-50' : 'border-stone-200/70 bg-white'}`}>
+                <p className="font-mono-tokens text-base sm:text-xl font-bold text-ink">{s.v}</p>
+                <p className="flex items-center justify-center gap-1 text-[10px] sm:text-[11px] font-semibold text-ink-mute">
                   {s.hot && <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-ember-600" />}{s.label}
                 </p>
               </div>
@@ -102,14 +102,14 @@ const StaffOrders = () => {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-stone-200/70 bg-white/70 p-1.5 shadow-card w-fit">
+      <div className="flex overflow-x-auto no-scrollbar gap-1.5 rounded-2xl border border-stone-200/70 bg-white/70 p-1.5 shadow-card w-full sm:w-fit">
         {FILTERS.map((f) => {
           const active = statusFilter === f.id;
           return (
             <button
               key={f.id}
               onClick={() => setStatusFilter(f.id)}
-              className={`btn-tactile relative rounded-xl px-4 py-2 text-sm font-bold transition-colors ${active ? 'text-cream' : 'text-ink-mute hover:text-ink'}`}
+              className={`btn-tactile relative shrink-0 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-bold transition-colors ${active ? 'text-cream' : 'text-ink-mute hover:text-ink'}`}
             >
               {active && <motion.span layoutId="staff-filter" className="absolute inset-0 rounded-xl bg-stone-900" transition={{ type: 'spring', stiffness: 380, damping: 32 }} />}
               <span className="relative z-10">{f.label}</span>

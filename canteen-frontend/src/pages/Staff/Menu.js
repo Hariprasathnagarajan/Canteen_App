@@ -241,7 +241,7 @@ const StaffMenu = () => {
             {menuItems.map((item) => (
               <div key={item.id} className="overflow-hidden bg-white shadow-sm rounded-xl">
                 <div className="p-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-lg font-semibold text-gray-900">{item.name}</h3>
                     <div className="flex items-center space-x-2">
                       <span className="px-2 py-1 text-sm font-medium text-ember-800 bg-ember-100 rounded-lg">

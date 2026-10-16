@@ -1,12 +1,40 @@
-import { Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { Suspense, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
+import MobileBottomNav from './components/MobileBottomNav';
 import { Soup } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getDefaultRoute } from './utils/routes';
+
+const PAGE_TITLES = {
+  '/login': 'Sign In | VDart Cafe',
+  '/reset-password': 'Reset Password | VDart Cafe',
+  '/unauthorized': 'Access Denied | VDart Cafe',
+  '/employee/menu': "Today's Menu | VDart Cafe",
+  '/employee/orders': 'My Orders | VDart Cafe',
+  '/employee/profile': 'Employee Profile | VDart Cafe',
+  '/guest/menu': 'Guest Menu | VDart Cafe',
+  '/guest/orders': 'Guest Orders | VDart Cafe',
+  '/guest/profile': 'Guest Profile | VDart Cafe',
+  '/staff/orders': 'Kitchen Orders | VDart Cafe',
+  '/staff/menu': 'Menu Management | VDart Cafe',
+  '/staff/profile': 'Staff Profile | VDart Cafe',
+  '/admin/dashboard': 'Admin Dashboard | VDart Cafe',
+  '/admin/users': 'User Management | VDart Cafe',
+  '/admin/tokens': 'Token Allocations | VDart Cafe',
+  '/admin/profile': 'Admin Profile | VDart Cafe',
+};
+
+const PageTitle = () => {
+  const location = useLocation();
+  useEffect(() => {
+    document.title = PAGE_TITLES[location.pathname] || 'VDart Cafe — Canteen Management System';
+  }, [location.pathname]);
+  return null;
+};
 
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
@@ -49,11 +77,12 @@ const Layout = ({ children }) => {
     <div className="min-h-[100dvh] bg-cream text-ink">
       <div className="grain-overlay" />
       {isAuthenticated && <Navbar />}
-      <main className="pb-16 pt-5">
-        <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-8">
+      <main className="pb-28 pt-4 sm:pt-5 lg:pb-16">
+        <div className="mx-auto w-full max-w-[1400px] px-3.5 sm:px-6 lg:px-8">
           {children}
         </div>
       </main>
+      {isAuthenticated && <MobileBottomNav />}
     </div>
   );
 };
@@ -70,6 +99,7 @@ const App = () => {
     <Router>
       <AuthProvider>
         <Suspense fallback={<LoadingFallback />}>
+          <PageTitle />
           <ToastContainer
             position="top-right"
             autoClose={1600}

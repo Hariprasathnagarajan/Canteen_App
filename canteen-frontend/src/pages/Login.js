@@ -109,8 +109,8 @@ const Login = () => {
                 <Soup className="h-6 w-6" strokeWidth={2} />
               </span>
               <span className="flex flex-col leading-none">
-                <span className="text-xl font-extrabold tracking-tight">Annapurna</span>
-                <span className="font-mono-tokens text-[10px] uppercase tracking-[0.24em] text-ink-mute">Canteen OS</span>
+                <span className="text-xl font-extrabold tracking-tight">VDart Cafe</span>
+                <span className="font-mono-tokens text-[10px] uppercase tracking-[0.24em] text-ink-mute">Canteen Management System</span>
               </span>
             </Link>
 
@@ -195,12 +195,12 @@ const Login = () => {
                   disabled={isSubmitting}
                   className="btn-tactile inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-4 py-3.5 text-sm font-bold text-cream shadow-card transition-colors hover:bg-ember-600 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isSubmitting ? (<><Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} /> Signing you in…</>) : (<>Enter the canteen <ArrowRight className="h-4 w-4" strokeWidth={2.2} /></>)}
+                  {isSubmitting ? (<><Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} /> Signing you in…</>) : (<>Enter VDart Cafe <ArrowRight className="h-4 w-4" strokeWidth={2.2} /></>)}
                 </button>
               </form>
             </div>
             <p className="mt-5 font-mono-tokens text-[11px] uppercase tracking-[0.18em] text-ink-mute">
-              Annapurna · Token-first ordering · No cash queues
+              VDart Cafe · Token-first ordering · No cash queues
             </p>
           </motion.div>
         </div>
@@ -213,7 +213,7 @@ const Login = () => {
             className="absolute inset-6 overflow-hidden rounded-5xl border border-stone-200/70 shadow-diffusion"
           >
             <img
-              src="https://picsum.photos/seed/annapurna-thali-2026/1200/1400"
+              src="https://picsum.photos/seed/vdart-cafe-thali-2026/1200/1400"
               alt="Overhead thali with curries, rice, bread and salads"
               className="h-full w-full object-cover"
             />

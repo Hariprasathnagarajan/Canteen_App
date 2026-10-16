@@ -67,8 +67,8 @@ const Navbar = () => {
               <span className="absolute ml-6 mt-6 h-2 w-2 rounded-full bg-ember-500 ring-2 ring-cream" />
             </span>
             <span className="hidden min-w-0 flex-col leading-none min-[420px]:flex">
-              <span className="truncate text-[17px] font-extrabold tracking-tight text-ink">Annapurna</span>
-              <span className="font-mono-tokens text-[10px] uppercase tracking-[0.22em] text-ink-mute">Canteen OS</span>
+              <span className="truncate text-[17px] font-extrabold tracking-tight text-ink">VDart Cafe</span>
+              <span className="font-mono-tokens text-[10px] uppercase tracking-[0.22em] text-ink-mute">Canteen Management System</span>
             </span>
           </Link>
 
@@ -98,11 +98,15 @@ const Navbar = () => {
             })}
           </div>
 
-          <div className="hidden items-center gap-2.5 md:flex">
+          {/* Right side items: desktop & mobile */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Live tokens always visible on mobile & desktop for employee/guest */}
             {(user?.role === 'employee' || user?.role === 'guest') && (
               <TokenPill value={user?.tokens ?? 0} tone="light" />
             )}
-            <div className="flex items-center gap-2.5 rounded-full border border-stone-200/70 bg-white/70 py-1 pl-1 pr-3">
+
+            {/* Desktop user profile badge */}
+            <div className="hidden items-center gap-2.5 rounded-full border border-stone-200/70 bg-white/70 py-1 pl-1 pr-3 md:flex">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ember-600 text-xs font-extrabold text-white">
                 {(user?.name || user?.username || 'U')[0].toUpperCase()}
               </span>
@@ -114,16 +118,30 @@ const Navbar = () => {
                 {user?.role}
               </span>
             </div>
-            <LogoutButton variant="ghost" size="sm" showLabel={false} className="rounded-full border border-stone-200/70 bg-white/70" />
-          </div>
 
-          <button
-            onClick={() => setMobileMenuOpen((v) => !v)}
-            className="btn-tactile inline-flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200/70 bg-white/70 text-ink lg:hidden"
-            aria-label="Toggle menu"
-          >
-            {mobileMenuOpen ? <X className="h-5 w-5" strokeWidth={2} /> : <Menu className="h-5 w-5" strokeWidth={2} />}
-          </button>
+            {/* Desktop logout button */}
+            <div className="hidden md:block">
+              <LogoutButton variant="ghost" size="sm" showLabel={false} className="rounded-full border border-stone-200/70 bg-white/70" />
+            </div>
+
+            {/* Mobile quick avatar / profile link */}
+            <Link
+              to={`/${user?.role}/profile`}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-ember-600 text-xs font-bold text-white shadow-sm transition-transform active:scale-95 md:hidden"
+              aria-label="My Profile"
+            >
+              {(user?.name || user?.username || 'U')[0].toUpperCase()}
+            </Link>
+
+            {/* Mobile menu toggle for secondary actions (logout, etc.) */}
+            <button
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              className="btn-tactile inline-flex h-9 w-9 items-center justify-center rounded-xl border border-stone-200/70 bg-white/70 text-ink lg:hidden"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="h-4 w-4" strokeWidth={2} /> : <Menu className="h-4 w-4" strokeWidth={2} />}
+            </button>
+          </div>
         </div>
 
         {mobileMenuOpen && (

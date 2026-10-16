@@ -199,7 +199,7 @@ const AdminTokens = () => {
 
   const renderShiftSection = (shift, title) => (
     <div key={shift} className="mb-8">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h2 className="text-xl font-semibold text-gray-800">
           {title} Shift
           <span className="ml-2 px-2 py-1 bg-ember-100 text-ember-800 text-sm rounded-full font-mono-tokens">

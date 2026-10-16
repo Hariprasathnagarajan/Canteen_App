@@ -54,7 +54,7 @@ const AdminDashboard = () => {
   if (loading) {
     return (
       <div className="space-y-6">
-        <SectionHeading kicker="Mess overview" title="Good morning" hint="Counting heads, plates and tokens…" />
+        <SectionHeading kicker="VDart Cafe Overview" title="Good morning" hint="Counting heads, plates and tokens…" />
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-12">
           {['xl:col-span-5', 'xl:col-span-4', 'xl:col-span-3'].map((span, i) => (
             <div key={i} className={`rounded-5xl border border-stone-200/70 bg-white p-8 shadow-card ${span}`}>
@@ -109,7 +109,7 @@ const AdminDashboard = () => {
   return (
     <div className="space-y-8 pb-10">
       <SectionHeading
-        kicker="Mess overview"
+        kicker="VDart Cafe Overview"
         title={`Good day, ${(user?.name || 'Admin').split(' ')[0]}`}
         hint="Heads on seats, dishes live, tokens moving. Everything below updates from the live register."
         right={

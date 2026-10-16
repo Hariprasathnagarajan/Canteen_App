@@ -9,7 +9,7 @@ def root_health_view(request):
     """Health check endpoint for Render and root URL visits"""
     return JsonResponse({
         'status': 'online',
-        'message': 'Canteen Management System API is running',
+        'message': 'VDart Cafe — Canteen Management System API is running',
         'backend': 'https://canteen-app-l261.onrender.com',
         'frontend': 'https://vcafe.netlify.app',
         'endpoints': {

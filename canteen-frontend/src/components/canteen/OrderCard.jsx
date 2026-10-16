@@ -19,13 +19,13 @@ const OrderCard = memo(function OrderCard({ order, index }) {
       transition={{ delay: Math.min((index || 0) * 0.06, 0.4), duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       className="overflow-hidden rounded-4xl border border-stone-200/70 bg-white shadow-card"
     >
-      <div className="flex items-center justify-between gap-3 border-b border-stone-100 px-5 py-3.5">
-        <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 px-4 py-3 sm:px-5 sm:py-3.5">
+        <div className="flex items-center gap-2">
           <span className="relative flex h-2.5 w-2.5">
             <span className={`absolute h-full w-full rounded-full ${meta.dot} ${order.status === 'pending' ? 'animate-breathe' : ''}`} />
           </span>
           <span className="font-mono-tokens text-sm font-bold text-ink">#{order.id}</span>
-          <span className="text-xs text-ink-mute">{new Date(order.created_at).toLocaleString()}</span>
+          <span className="text-xs text-ink-mute">{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
         <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.cls}`}>
           <Icon className="h-3.5 w-3.5" strokeWidth={2} />

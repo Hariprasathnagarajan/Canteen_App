@@ -221,7 +221,7 @@ const ResetPasswordModal = ({ isOpen, onClose, onSuccess }) => {
                     name="email"
                     value={requestData.email}
                     onChange={handleRequestChange}
-                    placeholder="e.g. rajesh.day@canteen.local"
+                    placeholder="e.g. rajesh.day@vdartcafe.local"
                     className="w-full pl-10 pr-3.5 py-2.5 text-sm bg-slate-50/60 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-ember-500/20 focus:border-ember-500 transition-colors"
                     required
                   />

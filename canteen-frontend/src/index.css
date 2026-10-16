@@ -13,6 +13,8 @@
   html {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   body {
@@ -21,6 +23,8 @@
     background-color: var(--cream);
     color: var(--ink);
     min-height: 100vh;
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
   }
 
   ::selection {
@@ -175,4 +179,24 @@
     border-color: #C2410C;
     box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.12);
   }
+
+  /* Mobile App UI utilities */
+  .mobile-bottom-nav {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0.5rem));
+  }
+
+  .mobile-cart-dock {
+    bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .touch-pill {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
+

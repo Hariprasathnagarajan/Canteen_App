@@ -1,6 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser, MenuItem, Order, OrderItem, ShiftTokenAllocation, TokenDistribution
+from .models import (
+    CustomUser, MenuItem, Order, OrderItem,
+    ShiftTokenAllocation, TokenDistribution, PasswordResetRequest
+)
+
+# VDart Cafe Branding for Django Admin
+admin.site.site_header = "VDart Cafe — Canteen Management System"
+admin.site.site_title = "VDart Cafe Admin"
+admin.site.index_title = "VDart Cafe Administration"
 
 @admin.register(CustomUser)
 class CustomUserAdmin(UserAdmin):
@@ -42,4 +50,12 @@ class TokenDistributionAdmin(admin.ModelAdmin):
     list_display = ['user', 'tokens_allocated', 'allocation_month']
     list_filter = ['allocation_month']
     search_fields = ['user__username']
+
+
+@admin.register(PasswordResetRequest)
+class PasswordResetRequestAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'status', 'created_at', 'reviewed_at', 'reviewed_by']
+    list_filter = ['status', 'created_at']
+    search_fields = ['user__username', 'user__user_id', 'user__email']
+    readonly_fields = ['created_at', 'reviewed_at']
 
