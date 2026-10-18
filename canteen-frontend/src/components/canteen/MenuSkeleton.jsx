@@ -6,7 +6,7 @@ const MenuSkeleton = memo(function MenuSkeleton({ count = 6 }) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="flex items-center gap-3 sm:gap-3.5 overflow-hidden rounded-2xl sm:rounded-3xl border border-stone-200/70 bg-white p-2.5 sm:p-3 shadow-2xs"
+          className="flex items-center gap-3 sm:gap-3.5 overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/70 bg-white p-2.5 sm:p-3 shadow-2xs"
         >
           {/* Shimmer Thumbnail */}
           <div className="skeleton-shimmer h-16 w-16 sm:h-20 sm:w-20 shrink-0 rounded-xl sm:rounded-2xl" />

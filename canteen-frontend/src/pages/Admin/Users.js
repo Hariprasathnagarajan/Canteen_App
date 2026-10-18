@@ -1,7 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Save, X, UserCheck, Search, CreditCard, KeyRound, Loader2, Lock, Check, Clock, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, UserCheck, Search, CreditCard, KeyRound, Loader2, Lock, Check, Clock, ShieldCheck, AlertCircle, RefreshCw, Upload } from 'lucide-react';
 import { adminAPI } from '../../utils/api';
 import { toast } from 'react-toastify';
+import BulkUploadPanel from '../../components/BulkUploadPanel';
+import EmptyState from '../../components/canteen/EmptyState';
+
+const USERS_TEMPLATE_CSV = [
+  'username,user_id,first_name,last_name,email,role,work_shift,monthly_tokens',
+  'emp101,EMP101,Arun,Kumar,arun.kumar@vdart.com,employee,day,',
+  'emp102,EMP102,Divya,Shree,divya.shree@vdart.com,employee,night,',
+  'guest01,GST001,Walk-in,Guest,guest01@vdart.com,guest,day,',
+].join('\r\n');
 
 const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser }) => (
   <div className="p-4 mb-4 bg-white shadow-sm rounded-xl">
@@ -11,13 +20,13 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="block mb-1 text-sm font-medium text-gray-700">Username</label>
+          <label className="block mb-1 text-sm font-medium text-slate-700">Username</label>
           <input
             type="text"
             required
             value={formData.username}
             onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
           />
         </div>
 
@@ -29,7 +38,7 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
             type="text"
             value={formData.user_id}
             onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
           />
         </div>
       </div>
@@ -42,7 +51,7 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
             required
             value={formData.first_name}
             onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
           />
         </div>
 
@@ -51,7 +60,7 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
           <input
             value={formData.last_name}
             onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
           />
         </div>
       </div>
@@ -94,7 +103,7 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
       <div className="flex space-x-2">
         <button
           type="submit"
-          className="flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-lg bg-primary hover:bg-ember-600"
+          className="flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-lg bg-primary hover:bg-cobalt-700"
         >
           <Save size={16} />
           <span>{editingUser ? 'Update' : 'Add'} User</span>
@@ -102,7 +111,7 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser 
         <button
           type="button"
           onClick={resetForm}
-          className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors bg-stone-500 rounded-xl hover:bg-stone-600"
+          className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors bg-slate-500 rounded-xl hover:bg-slate-600"
         >
           <X size={16} />
           <span>Cancel</span>
@@ -117,6 +126,7 @@ const AdminUsers = () => {
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showBulkPanel, setShowBulkPanel] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [formData, setFormData] = useState({
     username: '',
@@ -134,6 +144,7 @@ const AdminUsers = () => {
       setUsers(response.data.results || response.data);
     } catch (error) {
       console.error('Error fetching users:', error);
+      toast.error('Could not load users. Please refresh the page.');
     } finally {
       setLoading(false);
     }
@@ -216,8 +227,10 @@ const handleSubmit = async (e) => {
       try {
         await adminAPI.deleteUser(id);
         setUsers(users.filter(user => user.id !== id));
+        toast.success('User deleted');
       } catch (error) {
         console.error('Error deleting user:', error);
+        toast.error(formatApiError(error) || 'Failed to delete user');
       }
     }
   };
@@ -271,6 +284,7 @@ const handleSubmit = async (e) => {
       setResetRequests(res.data.results || res.data || []);
     } catch (err) {
       console.error('Error fetching reset requests:', err);
+      toast.error('Could not load password reset requests.');
     } finally {
       setLoadingRequests(false);
     }
@@ -314,10 +328,10 @@ const handleSubmit = async (e) => {
   const getRoleBadgeColor = (role) => {
     switch (role) {
       case 'admin': return 'bg-purple-100 text-purple-800';
-      case 'staff': return 'bg-ember-100 text-ember-800';
+      case 'staff': return 'bg-cobalt-100 text-cobalt-800';
       case 'employee': return 'bg-green-100 text-green-800';
-      case 'guest': return 'bg-orange-100 text-orange-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'guest': return 'bg-slate-100 text-slate-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -347,7 +361,7 @@ const handleSubmit = async (e) => {
    <div className="p-4">
       {/* Header */}
       <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-center md:justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
+        <h1 className="text-2xl font-bold text-slate-900">User Management</h1>
         <div className="flex flex-1 gap-2 md:flex-none">
           <div className="relative flex-1">
             <input
@@ -355,21 +369,48 @@ const handleSubmit = async (e) => {
               placeholder="Search users..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+              className="w-full px-3 py-2 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
             />
-            <Search className="absolute w-5 h-5 text-gray-400 left-3 top-2.5" />
+            <Search className="absolute w-5 h-5 text-slate-400 left-3 top-2.5" />
           </div>
           {!showAddForm && !editingUser && (
-            <button
-              onClick={() => setShowAddForm(true)}
-          className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-xl bg-primary hover:bg-ember-600 shadow-ember"
-            >
-              <Plus size={16} />
-              <span>Add User</span>
-            </button>
+            <>
+              <button
+                onClick={() => setShowBulkPanel((prev) => !prev)}
+                className="btn-tactile flex items-center px-4 py-2 space-x-2 font-semibold text-slate-800 bg-white border rounded-xl border-slate-200 hover:bg-slate-50 shadow-sm transition-colors"
+              >
+                <Upload size={16} />
+                <span>Bulk Upload</span>
+              </button>
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-xl bg-primary hover:bg-cobalt-700 shadow-cobalt"
+              >
+                <Plus size={16} />
+                <span>Add User</span>
+              </button>
+            </>
           )}
         </div>
       </div>
+
+      {/* Bulk Upload Panel */}
+      {showBulkPanel && (
+        <BulkUploadPanel
+          title="Bulk Upload Users"
+          description="Import employees, guests or staff from a CSV, JSON or Excel (.xlsx) file — or paste rows. Existing usernames are updated; new ones are created."
+          templateFilename="VDart_Cafe_Users_Template.csv"
+          templateContent={USERS_TEMPLATE_CSV}
+          importFn={adminAPI.bulkImportUsers}
+          onImported={(data) => {
+            const created = data?.created ?? 0;
+            const updated = data?.updated ?? 0;
+            toast.success(`Users imported — ${created} created, ${updated} updated.`);
+            fetchUsers();
+          }}
+          onClose={() => setShowBulkPanel(false)}
+        />
+      )}
 
       {/* Form */}
       {(showAddForm || editingUser) && (
@@ -390,7 +431,7 @@ const handleSubmit = async (e) => {
               key={role}
               onClick={() => setActiveTab(role)}
               className={`relative px-4 py-2.5 text-sm font-medium capitalize transition-colors ${
-                activeTab === role ? 'text-primary' : 'text-gray-600'
+                 activeTab === role ? 'text-primary' : 'text-slate-600'
               }`}
             >
               {role}
@@ -403,16 +444,16 @@ const handleSubmit = async (e) => {
           <button
             onClick={() => setActiveTab('requests')}
             className={`relative px-4 py-2.5 text-sm font-medium transition-colors flex items-center space-x-2 ${
-              activeTab === 'requests' ? 'text-primary font-bold' : 'text-gray-600'
+               activeTab === 'requests' ? 'text-primary font-bold' : 'text-slate-600'
             }`}
           >
             <span>Password Reset Requests</span>
             {pendingRequestsCount > 0 ? (
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white animate-pulse">
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-cobalt-600 text-white animate-pulse">
                 {pendingRequestsCount} pending
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+              <span               className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
                 {resetRequests.length}
               </span>
             )}
@@ -436,11 +477,11 @@ const handleSubmit = async (e) => {
       {/* RENDER TAB: PASSWORD RESET REQUESTS */}
       {activeTab === 'requests' ? (
         <div className="space-y-4">
-          <div className="p-4 bg-ember-50/70 border border-ember-200/80 rounded-2xl flex items-start space-x-3 text-xs text-ember-900">
-            <ShieldCheck className="w-5 h-5 text-ember-600 flex-shrink-0 mt-0.5" />
+          <div className="p-4 bg-cobalt-50/70 border border-cobalt-200/80 rounded-2xl flex items-start space-x-3 text-xs text-cobalt-900">
+            <ShieldCheck className="w-5 h-5 text-cobalt-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-sm text-ember-950 mb-0.5">Password Reset Policy</p>
-              <p className="text-ember-800">
+              <p className="font-semibold text-sm text-cobalt-950 mb-0.5">Password Reset Policy</p>
+              <p className="text-cobalt-800">
                 When an employee or staff member forgets their password, they submit a request here. When you click <strong>"Approve & Reset"</strong>, the system resets their password directly to their default <strong>Employee ID</strong>.
               </p>
             </div>
@@ -448,14 +489,15 @@ const handleSubmit = async (e) => {
 
           {loadingRequests ? (
             <div className="flex items-center justify-center py-12">
-              <div className="w-10 h-10 border-b-2 rounded-full animate-spin border-primary"></div>
+              <div className="w-12 h-12 border-b-2 rounded-full animate-spin border-primary"></div>
             </div>
           ) : resetRequests.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl border border-slate-200/70 p-8">
-              <KeyRound className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <h4 className="text-slate-700 font-semibold mb-1">No Password Reset Requests</h4>
-              <p className="text-xs text-slate-400">When employees or staff request a password reset, it will appear here for your approval.</p>
-            </div>
+            <EmptyState
+              icon={KeyRound}
+              art="receipt"
+              title="No Password Reset Requests"
+              hint="When employees or staff request a password reset, it will appear here for your approval."
+            />
           ) : (
             <div className="grid gap-3.5">
               {resetRequests.map((req) => (
@@ -478,7 +520,7 @@ const handleSubmit = async (e) => {
                     </div>
 
                     <div className="text-xs text-slate-600 flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5">
-                      <span>Email: <strong className="text-slate-800">{req.user_details?.email || 'N/A'}</strong></span>
+                      <span className="min-w-0">Email: <strong className="text-slate-800 break-all">{req.user_details?.email || 'N/A'}</strong></span>
                       <span>Requested: {new Date(req.created_at).toLocaleString()}</span>
                       {req.reason && <span className="italic text-slate-500">Reason: "{req.reason}"</span>}
                     </div>
@@ -535,8 +577,19 @@ const handleSubmit = async (e) => {
       ) : (
         /* User List */
         loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-12 h-12 border-b-2 rounded-full animate-spin border-primary"></div>
+          <div className="grid gap-3">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <div key={n} className="flex items-center justify-between p-4 bg-white border border-slate-200/80 rounded-2xl shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="skeleton-shimmer h-9 w-9 rounded-full shrink-0" />
+                  <div className="space-y-1.5">
+                    <div className="skeleton-shimmer h-3.5 w-32 rounded-full" />
+                    <div className="skeleton-shimmer h-2.5 w-24 rounded-full" />
+                  </div>
+                </div>
+                <div className="skeleton-shimmer h-8 w-24 rounded-xl" />
+              </div>
+            ))}
           </div>
         ) : (
           <div className="grid gap-4">
@@ -548,16 +601,16 @@ const handleSubmit = async (e) => {
               >
                 {/* Left: Avatar + Name + Username */}
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center justify-center w-8 h-8 bg-stone-100 rounded-full shrink-0">
-                    <UserCheck className="w-4 h-4 text-stone-600" />
+                  <div className="flex items-center justify-center w-8 h-8 bg-slate-100 rounded-full shrink-0">
+                    <UserCheck className="w-4 h-4 text-slate-600" />
                   </div>
                   <div className="group">
-                    <p className="text-sm font-semibold text-gray-900">
-                      {user.first_name} {user.last_name}
-                    </p>
-                    <p className="text-xs text-gray-500 group-hover:underline" title={`@${user.username}`}>
-                      @{user.username}
-                    </p>
+                     <p className="text-sm font-semibold text-slate-900">
+                       {user.first_name} {user.last_name}
+                     </p>
+                     <p className="text-xs text-slate-500 group-hover:underline" title={`@${user.username}`}>
+                       @{user.username}
+                     </p>
                   </div>
                   <span
                     className={`px-2 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}
@@ -576,10 +629,10 @@ const handleSubmit = async (e) => {
                     </span>
                   )}
                   </div>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700">
+                 <div className="flex flex-wrap items-center gap-3 text-sm text-slate-700">
 
                   <span
-                    className="text-gray-500 truncate max-w-[150px]"
+                     className="text-slate-500 truncate max-w-[150px]"
                     title={user.email || 'Email not provided'}
                   >
                     {user.email || 'No email'}
@@ -591,16 +644,16 @@ const handleSubmit = async (e) => {
                   <button
                     onClick={() => {
                       setResetModalUser(user);
-                      setNewPasswordValue(user.user_id || 'Password123!');
+                      setNewPasswordValue('');
                     }}
-                    className="p-1 text-amber-500 transition-colors hover:text-amber-700 hover:bg-amber-50 rounded-lg"
+                    className="p-1 text-cobalt-600 transition-colors hover:text-cobalt-800 hover:bg-cobalt-50 rounded-lg"
                     title="Reset user password"
                   >
                     <KeyRound size={16} />
                   </button>
                   <button
                     onClick={() => handleEdit(user)}
-                    className="btn-tactile p-1 text-ember-600 transition-colors hover:text-ember-800 hover:bg-ember-50 rounded-lg"
+                    className="btn-tactile p-1 text-cobalt-600 transition-colors hover:text-cobalt-800 hover:bg-cobalt-50 rounded-lg"
                     title="Edit user"
                   >
                     <Edit2 size={16} />
@@ -616,7 +669,15 @@ const handleSubmit = async (e) => {
               </div>
             ))
           ) : (
-            <div className="text-center text-gray-500">No users found.</div>
+            <EmptyState
+              art={searchTerm || activeTab !== 'all' ? 'receipt' : 'tray'}
+              title="No users found"
+              hint={
+                searchTerm
+                  ? `Nothing matched "${searchTerm}". Try a different name, email or username.`
+                  : 'No users in this view yet. Add a user or run a bulk upload to get started.'
+              }
+            />
           )}
         </div>
         )
@@ -628,7 +689,7 @@ const handleSubmit = async (e) => {
           <div className="relative w-full max-w-md p-6 bg-white border border-slate-100 shadow-2xl rounded-2xl animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
               <div className="flex items-center space-x-2.5">
-                <div className="p-2 text-amber-600 bg-amber-50 rounded-xl">
+                <div className="p-2 text-cobalt-600 bg-cobalt-50 rounded-xl">
                   <KeyRound className="w-5 h-5" />
                 </div>
                 <div>
@@ -664,7 +725,7 @@ const handleSubmit = async (e) => {
                     value={newPasswordValue}
                     onChange={(e) => setNewPasswordValue(e.target.value)}
                     placeholder="Enter new password (min 6 characters)"
-                    className="w-full pl-10 pr-3.5 py-2.5 text-sm bg-slate-50/50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-none transition-colors"
+                    className="w-full pl-10 pr-3.5 py-2.5 text-sm bg-slate-50/50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-cobalt-500/20 focus:border-cobalt-500 focus:outline-none transition-colors"
                   />
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">
@@ -683,7 +744,7 @@ const handleSubmit = async (e) => {
                 <button
                   type="submit"
                   disabled={resettingPassword || newPasswordValue.length < 6}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-xl disabled:opacity-50 transition-colors shadow-sm shadow-amber-500/20"
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-cobalt-600 hover:bg-cobalt-700 rounded-xl disabled:opacity-50 transition-colors shadow-sm shadow-cobalt-500/20"
                 >
                   {resettingPassword ? (
                     <>

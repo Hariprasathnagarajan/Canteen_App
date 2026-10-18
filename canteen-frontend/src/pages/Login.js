@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Loader2, Eye, EyeOff, Lock, User, ArrowRight, Soup, Clock, Coins, ClipboardList, TriangleAlert } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Lock, User, ArrowRight, Clock, Coins, ClipboardList, TriangleAlert } from 'lucide-react';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useAuth } from '../context/AuthContext';
 import { getDefaultRoute } from '../utils/routes';
+import { CupGlyph, CafeHeroScene, LinkedLineBand } from '../components/lineart';
 import ResetPasswordModal from '../components/ResetPasswordModal';
+import LoadingFallback from '../components/canteen/LoadingFallback';
 
 const spring = { type: 'spring', stiffness: 120, damping: 20 };
 
@@ -29,6 +31,13 @@ const Login = () => {
       setCredentials((prev) => ({ ...prev, username: location.state.prefilledUsername }));
     }
   }, [location.state?.prefilledUsername]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('reason') === 'expired') {
+      setFormError('Your session expired. Please sign in again.');
+    }
+  }, [location.search]);
 
   const redirectUser = useCallback((role) => {
     const fromState = location.state?.from;
@@ -66,13 +75,9 @@ const Login = () => {
     setFormError('');
     try {
       const result = await login({ username: credentials.username.trim(), password: credentials.password });
-      if (result && result.success) {
-        const name = result.user?.name || result.user?.username || 'Welcome';
-        toast.success(`Welcome back, ${name} — kitchen is open.`, { autoClose: 1400, pauseOnHover: false, hideProgressBar: true });
-      } else {
+      if (!(result && result.success)) {
         const errorMessage = (result && result.error) ? result.error : 'Login failed. Please check your credentials.';
         setFormError(errorMessage);
-        toast.error(errorMessage);
       }
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 'Login failed. Please check your credentials.';
@@ -84,29 +89,18 @@ const Login = () => {
   };
 
   if (authLoading) {
-    return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-5 bg-cream px-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-stone-900">
-          <Soup className="h-7 w-7 animate-floaty text-cream" strokeWidth={2} />
-        </div>
-        <div className="w-full max-w-xs space-y-2.5">
-          <div className="skeleton-shimmer h-3.5 w-full rounded-full" />
-          <div className="skeleton-shimmer h-3.5 w-3/5 rounded-full" />
-        </div>
-        <p className="font-mono-tokens text-[11px] uppercase tracking-[0.22em] text-ink-mute">Checking your pass…</p>
-      </div>
-    );
+    return <LoadingFallback message="Checking your canteen pass…" />;
   }
 
   return (
-    <div className="min-h-[100dvh] bg-cream text-ink">
+    <div className="min-h-[100dvh] bg-paper text-ink">
       <div className="grain-overlay" />
       <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1400px] grid-cols-1 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="flex flex-col justify-center px-5 py-10 sm:px-10 lg:px-16 lg:py-14">
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={spring} className="w-full max-w-md">
             <Link to="/" className="inline-flex items-center gap-2.5">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-stone-900 text-cream shadow-card">
-                <Soup className="h-6 w-6" strokeWidth={2} />
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cobalt-600 text-white shadow-card">
+                <CupGlyph className="h-7 w-7" />
               </span>
               <span className="flex flex-col leading-none">
                 <span className="text-xl font-extrabold tracking-tight">VDart Cafe</span>
@@ -114,7 +108,7 @@ const Login = () => {
               </span>
             </Link>
 
-            <p className="mt-8 font-mono-tokens text-[11px] font-semibold uppercase tracking-[0.22em] text-ember-600">
+            <p className="mt-8 font-mono-tokens text-[11px] font-semibold uppercase tracking-[0.22em] text-cobalt-600">
               Today's kitchen · 07:30 – 21:00
             </p>
             <h1 className="mt-2 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:text-6xl sm:tracking-tighter text-balance">
@@ -124,7 +118,7 @@ const Login = () => {
               Order from today's menu with tokens, track the pass in real time, and pick up without waiting. Built for employees, guests and the crew behind the counter.
             </p>
 
-            <div className="mt-6 sm:mt-8 rounded-3xl sm:rounded-4xl border border-stone-200/80 bg-white p-5 sm:p-7 shadow-card">
+            <div className="mt-6 sm:mt-8 rounded-3xl sm:rounded-4xl border border-slate-200 bg-white p-5 sm:p-7 shadow-card">
               {(formError || authError) && (
                 <div className="mb-5 flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 p-3.5 text-sm text-red-800" role="alert">
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
@@ -147,7 +141,7 @@ const Login = () => {
                       autoFocus
                       value={credentials.username}
                       onChange={handleChange}
-                      placeholder="e.g. hariprasath.e042"
+                      placeholder="Your username or user ID"
                       className="field-input pl-11"
                     />
                   </div>
@@ -185,7 +179,7 @@ const Login = () => {
                   <button
                     type="button"
                     onClick={() => setIsResetModalOpen(true)}
-                    className="font-bold text-ember-700 underline-offset-4 hover:underline"
+                    className="font-bold text-cobalt-700 underline-offset-4 hover:underline"
                   >
                     Reset password
                   </button>
@@ -193,13 +187,14 @@ const Login = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="btn-tactile inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-4 py-3.5 text-sm font-bold text-cream shadow-card transition-colors hover:bg-ember-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="btn-tactile inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cobalt-600 px-4 py-3.5 text-sm font-bold text-white shadow-cobalt transition-colors hover:bg-cobalt-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSubmitting ? (<><Loader2 className="h-5 w-5 animate-spin" strokeWidth={2} /> Signing you in…</>) : (<>Enter VDart Cafe <ArrowRight className="h-4 w-4" strokeWidth={2.2} /></>)}
                 </button>
               </form>
             </div>
-            <p className="mt-5 font-mono-tokens text-[11px] uppercase tracking-[0.18em] text-ink-mute">
+            <LinkedLineBand className="mt-7 h-9 w-full max-w-sm text-cobalt-500/60" />
+            <p className="mt-4 font-mono-tokens text-[11px] uppercase tracking-[0.18em] text-ink-mute">
               VDart Cafe · Token-first ordering · No cash queues
             </p>
           </motion.div>
@@ -210,47 +205,45 @@ const Login = () => {
             initial={{ opacity: 0, scale: 1.04 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute inset-6 overflow-hidden rounded-5xl border border-stone-200/70 shadow-diffusion"
+            className="absolute inset-6 overflow-hidden rounded-5xl border border-slate-200 bg-gradient-to-br from-cobalt-50 via-white to-cobalt-100/70 shadow-diffusion"
           >
-            <img
-              src="https://picsum.photos/seed/vdart-cafe-thali-2026/1200/1400"
-              alt="Overhead thali with curries, rice, bread and salads"
-              className="h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-stone-950/72 via-stone-950/12 to-transparent" />
-            <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-cream to-transparent opacity-90" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(0,72,187,0.12),transparent_55%)]" />
 
-            <div className="absolute left-6 top-6 flex items-center gap-2 rounded-full border border-white/20 bg-stone-950/55 px-3.5 py-1.5 text-cream backdrop-blur-md">
-              <span className="h-2 w-2 animate-breathe rounded-full bg-green-400" />
-              <span className="font-mono-tokens text-[11px] font-semibold uppercase tracking-[0.18em]">Live · 47 thalis served today</span>
+            <div className="absolute left-6 top-6 z-10 flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-3.5 py-1.5 backdrop-blur-md">
+              <span className="h-2 w-2 animate-breathe rounded-full bg-leaf-500" />
+              <span className="font-mono-tokens text-[11px] font-semibold uppercase tracking-[0.18em] text-ink">Kitchen open · 07:30 – 21:00</span>
             </div>
 
-            <div className="absolute inset-x-6 bottom-6 grid grid-cols-2 gap-3">
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute inset-x-4 top-16 bottom-44 flex items-center justify-center text-cobalt-600"
+            >
+              <CafeHeroScene className="h-full w-full" />
+            </motion.div>
+
+            <div className="absolute inset-x-6 bottom-6 grid grid-cols-1 gap-3">
               <div className="glass-card stagger-item rounded-3xl p-4" style={{ '--index': 1 }}>
-                <div className="flex items-center gap-2 text-ember-700">
+                <div className="flex items-center gap-2 text-cobalt-700">
                   <Coins className="h-4 w-4" strokeWidth={2} />
                   <span className="font-mono-tokens text-[11px] font-bold uppercase tracking-[0.16em]">Token wallet</span>
                 </div>
-                <p className="mt-1.5 font-mono-tokens text-2xl font-bold text-ink">312.50 tk</p>
-                <p className="text-xs text-ink-mute">Topped up this morning</p>
+                <p className="mt-1 text-xs leading-relaxed text-ink-mute">Monthly allowance loaded to your pass — no cash at the counter.</p>
               </div>
               <div className="glass-card stagger-item rounded-3xl p-4" style={{ '--index': 2 }}>
-                <div className="flex items-center gap-2 text-ember-700">
-                  <Clock className="h-4 w-4" strokeWidth={2} />
-                  <span className="font-mono-tokens text-[11px] font-bold uppercase tracking-[0.16em]">Counter wait</span>
+                <div className="flex items-center gap-2 text-cobalt-700">
+                  <ClipboardList className="h-4 w-4" strokeWidth={2} />
+                  <span className="font-mono-tokens text-[11px] font-bold uppercase tracking-[0.16em]">Live ticket tracking</span>
                 </div>
-                <p className="mt-1.5 font-mono-tokens text-2xl font-bold text-ink">3.4 min</p>
-                <p className="text-xs text-ink-mute">Skipped 22 people in queue</p>
+                <p className="mt-1 text-xs leading-relaxed text-ink-mute">Watch every order move from the fire to the pickup shelf in real time.</p>
               </div>
-              <div className="glass-card stagger-item col-span-2 flex items-center gap-3 rounded-3xl p-4" style={{ '--index': 3 }}>
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-900 text-cream">
-                  <ClipboardList className="h-5 w-5" strokeWidth={2} />
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-ink">Order #1847 moved to pickup shelf</p>
-                  <p className="font-mono-tokens text-[11px] text-ink-mute">2 × sambar sadham · 1 × curd rice · just now</p>
+              <div className="glass-card stagger-item rounded-3xl p-4" style={{ '--index': 3 }}>
+                <div className="flex items-center gap-2 text-cobalt-700">
+                  <Clock className="h-4 w-4" strokeWidth={2} />
+                  <span className="font-mono-tokens text-[11px] font-bold uppercase tracking-[0.16em]">Skip the queue</span>
                 </div>
-                <span className="ml-auto shrink-0 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-800">Ready</span>
+                <p className="mt-1 text-xs leading-relaxed text-ink-mute">Order ahead from today's menu and pick up when your ticket is ready.</p>
               </div>
             </div>
           </motion.div>

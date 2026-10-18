@@ -1,13 +1,36 @@
 import { Suspense, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import MobileBottomNav from './components/MobileBottomNav';
-import { Soup } from 'lucide-react';
+import ErrorBoundary from './components/ErrorBoundary';
+import LoadingFallback from './components/canteen/LoadingFallback';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getDefaultRoute } from './utils/routes';
+
+import Login from './pages/Login';
+import ResetPassword from './pages/ResetPassword';
+import Unauthorized from './pages/Unauthorized';
+import NotFound from './pages/NotFound';
+
+import EmployeeMenu from './pages/Employee/Menu';
+import EmployeeOrders from './pages/Employee/Orders';
+import EmployeeProfile from './pages/Employee/Profile';
+
+import GuestMenu from './pages/Guest/Menu';
+import GuestOrders from './pages/Guest/Orders';
+import GuestProfile from './pages/Guest/Profile';
+
+import StaffOrders from './pages/Staff/Orders';
+import StaffMenu from './pages/Staff/Menu';
+import StaffProfile from './pages/Staff/Profile';
+
+import AdminUsers from './pages/Admin/Users';
+import AdminTokens from './pages/Admin/Tokens';
+import AdminProfile from './pages/Admin/Profile';
+import AdminDashboard from './pages/Admin/Dashboard';
 
 const PAGE_TITLES = {
   '/login': 'Sign In | VDart Cafe',
@@ -36,45 +59,10 @@ const PageTitle = () => {
   return null;
 };
 
-import Login from './pages/Login';
-import ResetPassword from './pages/ResetPassword';
-import Unauthorized from './pages/Unauthorized';
-
-import EmployeeMenu from './pages/Employee/Menu';
-import EmployeeOrders from './pages/Employee/Orders';
-import EmployeeProfile from './pages/Employee/Profile';
-
-import GuestMenu from './pages/Guest/Menu';
-import GuestOrders from './pages/Guest/Orders';
-import GuestProfile from './pages/Guest/Profile';
-
-import StaffOrders from './pages/Staff/Orders';
-import StaffMenu from './pages/Staff/Menu';
-import StaffProfile from './pages/Staff/Profile';
-
-import AdminUsers from './pages/Admin/Users';
-import AdminTokens from './pages/Admin/Tokens';
-import AdminProfile from './pages/Admin/Profile';
-import AdminDashboard from './pages/Admin/Dashboard';
-
-const LoadingFallback = () => (
-  <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-5 bg-cream px-4">
-    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-stone-900 shadow-diffusion">
-      <Soup className="h-7 w-7 animate-floaty text-cream" strokeWidth={2} />
-    </div>
-    <div className="w-full max-w-xs space-y-2.5">
-      <div className="skeleton-shimmer h-3.5 w-full rounded-full" />
-      <div className="skeleton-shimmer h-3.5 w-4/5 rounded-full" />
-      <div className="skeleton-shimmer h-3.5 w-3/5 rounded-full" />
-    </div>
-    <p className="font-mono-tokens text-[11px] uppercase tracking-[0.22em] text-ink-mute">Warming up the kitchen…</p>
-  </div>
-);
-
 const Layout = ({ children }) => {
   const { isAuthenticated } = useAuth();
   return (
-    <div className="min-h-[100dvh] bg-cream text-ink">
+    <div className="min-h-[100dvh] bg-paper text-ink">
       <div className="grain-overlay" />
       {isAuthenticated && <Navbar />}
       <main className="pb-28 pt-4 sm:pt-5 lg:pb-16">
@@ -89,18 +77,19 @@ const Layout = ({ children }) => {
 
 const RoleBasedRedirect = () => {
   const { user, isAuthenticated, loading } = useAuth();
-  if (loading) return <LoadingFallback />;
+  if (loading && !user) return <LoadingFallback message="Directing to your station…" />;
   if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
   return <Navigate to={getDefaultRoute(user.role)} replace />;
 };
 
 const App = () => {
   return (
-    <Router>
-      <AuthProvider>
-        <Suspense fallback={<LoadingFallback />}>
-          <PageTitle />
-          <ToastContainer
+    <ErrorBoundary>
+      <Router>
+        <AuthProvider>
+          <Suspense fallback={<LoadingFallback message="Plating up…" />}>
+            <PageTitle />
+            <ToastContainer
             position="top-right"
             autoClose={1600}
             pauseOnHover={false}
@@ -193,23 +182,15 @@ const App = () => {
               <Route path="/" element={<RoleBasedRedirect />} />
 
               <Route path="*" element={
-                <ProtectedRoute>
-                  <Layout>
-                  <div className="mx-auto max-w-lg py-20 text-center">
-                    <p className="font-mono-tokens text-xs uppercase tracking-[0.24em] text-ember-600">Off the menu</p>
-                    <h1 className="mt-2 text-6xl font-extrabold tracking-tighter text-ink">404</h1>
-                    <p className="mt-2 text-ink-mute">This plate is empty — the page you want is not on today's menu.</p>
-                    <Link to="/" className="btn-tactile mt-6 inline-flex items-center rounded-2xl bg-stone-900 px-6 py-3 text-sm font-bold text-cream hover:bg-ember-600">
-                      Back to today's menu
-                    </Link>
-                  </div>
-                  </Layout>
-                </ProtectedRoute>
+                <Layout>
+                  <NotFound />
+                </Layout>
               } />
           </Routes>
         </Suspense>
       </AuthProvider>
     </Router>
+  </ErrorBoundary>
   );
 };
 

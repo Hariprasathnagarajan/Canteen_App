@@ -9,6 +9,7 @@ Covers:
   6. Password Reset Security (Self-service + Admin Approval)
   7. Admin Dashboard Analytics & Reporting
 """
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
@@ -119,7 +120,7 @@ class RBACTests(VDartCafeBaseTestCase):
 # ---------------------------------------------------------
 class TokenAllocationTests(VDartCafeBaseTestCase):
 
-    def test_new_night_shift_user_gets_100_tokens_automatically(self):
+    def test_new_user_starts_with_zero_tokens(self):
         self.client.force_authenticate(user=self.admin)
         resp = self.client.post("/api/admin/users/", {
             "username": "night_emp", "user_id": "EMP099", "email": "night@vdartcafe.com",
@@ -127,7 +128,8 @@ class TokenAllocationTests(VDartCafeBaseTestCase):
         })
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         created_user = CustomUser.objects.get(username="night_emp")
-        self.assertEqual(created_user.monthly_tokens, 100)
+        # Tokens are never auto-allocated — the admin allocates explicitly
+        self.assertEqual(created_user.monthly_tokens, 0)
         self.assertEqual(created_user.user_id, "EMP099")
 
     def test_assign_tokens_updates_user_balance_and_creates_audit_trail(self):
@@ -139,20 +141,158 @@ class TokenAllocationTests(VDartCafeBaseTestCase):
         # Audit trail record exists
         self.assertTrue(TokenDistribution.objects.filter(user=self.employee, tokens_allocated=65).exists())
 
+    def test_assign_tokens_requires_explicit_amount(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post("/api/admin/tokens/assign/", {"shift": "day"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.monthly_tokens, 50)  # unchanged
+
+    def test_assign_all_shifts_requires_explicit_amounts(self):
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.post("/api/admin/tokens/assign/", {"shift": "all"})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_admin_token_summary(self):
         self.client.force_authenticate(user=self.admin)
         resp = self.client.get("/api/admin/tokens/summary/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertIn("day_shift", resp.data)
+        day_users = resp.data["day_shift"]["users"]
+        employee_row = next((u for u in day_users if u["username"] == "emp_test"), None)
+        self.assertIsNotNone(employee_row)
+        self.assertEqual(employee_row["name"], "emp_test")  # name falls back to username
+        self.assertEqual(employee_row["user_id"], "EMP001")
+        self.assertIn("email", employee_row)
 
     def test_assign_tokens_all_shifts(self):
         self.client.force_authenticate(user=self.admin)
-        resp = self.client.post("/api/admin/tokens/assign/", {"shift": "all"})
+        resp = self.client.post("/api/admin/tokens/assign/", {
+            "shift": "all",
+            "tokens": {"day": 50, "mid": 75, "night": 100},
+        }, format="json")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.employee.refresh_from_db()
-        self.assertEqual(self.employee.monthly_tokens, 50)  # Day shift baseline 50
+        self.assertEqual(self.employee.monthly_tokens, 50)  # Day shift amount
         self.guest.refresh_from_db()
-        self.assertEqual(self.guest.monthly_tokens, 50)  # Guest day shift baseline 50
+        self.assertEqual(self.guest.monthly_tokens, 50)  # Guest in day shift
+
+
+# ---------------------------------------------------------
+# 3b. Bulk Import (users + menu) — CSV / JSON / XLSX
+# ---------------------------------------------------------
+class BulkImportTests(VDartCafeBaseTestCase):
+
+    def _build_xlsx(self, headers, rows):
+        from openpyxl import Workbook
+        from io import BytesIO
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(headers)
+        for row in rows:
+            sheet.append(row)
+        buffer = BytesIO()
+        workbook.save(buffer)
+        buffer.seek(0)
+        return buffer.read()
+
+    def test_bulk_import_users_from_pasted_csv(self):
+        self.client.force_authenticate(user=self.admin)
+        csv_text = (
+            "username,user_id,first_name,last_name,email,role,work_shift,monthly_tokens\n"
+            "bulk_emp1,BK001,Ravi,Verma,ravi@vdartcafe.com,employee,mid,\n"
+            "bulk_emp2,BK002,Sneha,Rao,sneha@vdartcafe.com,employee,night,40\n"
+        )
+        resp = self.client.post("/api/admin/users/bulk-import/", {"text": csv_text, "format": "csv"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["created"], 2)
+        self.assertEqual(resp.data["errors"], [])
+
+        emp1 = CustomUser.objects.get(username="bulk_emp1")
+        self.assertEqual(emp1.monthly_tokens, 0)  # no implicit default
+        self.assertEqual(emp1.work_shift, "mid")
+        emp2 = CustomUser.objects.get(username="bulk_emp2")
+        self.assertEqual(emp2.monthly_tokens, 40)
+        # Password defaults to user id when not provided
+        self.assertTrue(emp1.check_password("BK001"))
+
+    def test_bulk_import_users_from_uploaded_csv_file(self):
+        self.client.force_authenticate(user=self.admin)
+        csv_bytes = (
+            "username,user_id,email,role,work_shift\n"
+            "file_emp1,FE001,file1@vdartcafe.com,employee,day\n"
+        ).encode("utf-8")
+        upload = SimpleUploadedFile("users.csv", csv_bytes, content_type="text/csv")
+        resp = self.client.post("/api/admin/users/bulk-import/", {"file": upload}, format="multipart")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["created"], 1)
+        self.assertTrue(CustomUser.objects.filter(username="file_emp1").exists())
+
+    def test_bulk_import_users_from_xlsx_file(self):
+        self.client.force_authenticate(user=self.admin)
+        xlsx_bytes = self._build_xlsx(
+            ["username", "user_id", "email", "role", "work_shift"],
+            [["xlsx_emp1", "XL001", "xlsx1@vdartcafe.com", "employee", "day"]],
+        )
+        upload = SimpleUploadedFile(
+            "users.xlsx", xlsx_bytes,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        resp = self.client.post("/api/admin/users/bulk-import/", {"file": upload}, format="multipart")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["created"], 1)
+        self.assertTrue(CustomUser.objects.filter(username="xlsx_emp1").exists())
+
+    def test_bulk_import_users_updates_existing_and_reports_bad_rows(self):
+        self.client.force_authenticate(user=self.admin)
+        csv_text = (
+            "username,user_id,work_shift\n"
+            "emp_test,EMP001,night\n"
+            ",BAD001,day\n"
+            "bad_shift_emp,BS001,evening\n"
+        )
+        resp = self.client.post("/api/admin/users/bulk-import/", {"text": csv_text, "format": "csv"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["updated"], 1)
+        self.assertEqual(len(resp.data["errors"]), 2)
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.work_shift, "night")
+
+    def test_bulk_import_menu_items_from_pasted_json(self):
+        self.client.force_authenticate(user=self.staff)
+        payload = {
+            "text": '[{"name": "Masala Dosa", "price": 30, "description": "Crispy dosa"},'
+                    ' {"name": "Bad Item", "description": "no price"}]',
+            "format": "json",
+        }
+        resp = self.client.post("/api/staff/menu/bulk-import/", payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["created"], 1)
+        self.assertEqual(len(resp.data["errors"]), 1)
+        self.assertEqual(MenuItem.objects.get(name="Masala Dosa").price, 30)
+
+    def test_bulk_import_menu_items_from_xlsx_file(self):
+        self.client.force_authenticate(user=self.staff)
+        xlsx_bytes = self._build_xlsx(
+            ["name", "price", "description", "is_available"],
+            [["Rava Kesari", 25, "Sweet kesari", "yes"]],
+        )
+        upload = SimpleUploadedFile(
+            "menu.xlsx", xlsx_bytes,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        resp = self.client.post("/api/staff/menu/bulk-import/", {"file": upload}, format="multipart")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["created"], 1)
+        item = MenuItem.objects.get(name="Rava Kesari")
+        self.assertEqual(item.price, 25)
+        self.assertTrue(item.is_available)
+
+    def test_bulk_import_requires_admin_for_users(self):
+        self.client.force_authenticate(user=self.employee)
+        resp = self.client.post("/api/admin/users/bulk-import/", {"text": "username\nx1"})
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
 
 # ---------------------------------------------------------
@@ -409,3 +549,129 @@ class DashboardAnalyticsTests(VDartCafeBaseTestCase):
         self.client.force_authenticate(user=self.employee)
         resp = self.client.get("/api/admin/dashboard/stats/")
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+# ---------------------------------------------------------
+# 8. Digital Receipts & Extended Kitchen Workflows
+# ---------------------------------------------------------
+class DigitalReceiptTests(VDartCafeBaseTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.order = Order.objects.create(
+            user=self.employee,
+            total_tokens=20,
+            status="completed",
+        )
+        self.item1 = OrderItem.objects.create(
+            order=self.order,
+            menu_item=self.coffee,
+            quantity=1,
+            tokens_per_item=5,
+        )
+        self.item2 = OrderItem.objects.create(
+            order=self.order,
+            menu_item=self.sandwich,
+            quantity=1,
+            tokens_per_item=15,
+        )
+
+    def test_employee_can_fetch_own_order_receipt(self):
+        self.client.force_authenticate(user=self.employee)
+        resp = self.client.get(f"/api/orders/{self.order.id}/receipt/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["order_id"], self.order.id)
+        self.assertIn("receipt_number", resp.data)
+        self.assertTrue(resp.data["receipt_number"].startswith("VDART-RCPT-"))
+        self.assertEqual(resp.data["total_tokens"], 20)
+        self.assertEqual(len(resp.data["items"]), 2)
+        self.assertEqual(resp.data["user"]["username"], "emp_test")
+        self.assertEqual(resp.data["user"]["user_id"], "EMP001")
+        self.assertIn("verification_code", resp.data)
+        self.assertIn("cafe_info", resp.data)
+        self.assertEqual(resp.data["cafe_info"]["name"], "VDart Cafe")
+
+    def test_non_owner_forbidden_from_other_user_receipt(self):
+        # Guest user attempts to access employee's receipt
+        self.client.force_authenticate(user=self.guest)
+        resp = self.client.get(f"/api/orders/{self.order.id}/receipt/")
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_staff_and_admin_can_view_any_order_receipt(self):
+        # Staff inspection for kitchen printing
+        self.client.force_authenticate(user=self.staff)
+        resp_staff = self.client.get(f"/api/orders/{self.order.id}/receipt/")
+        self.assertEqual(resp_staff.status_code, status.HTTP_200_OK)
+
+        # Admin auditing
+        self.client.force_authenticate(user=self.admin)
+        resp_admin = self.client.get(f"/api/orders/{self.order.id}/receipt/")
+        self.assertEqual(resp_admin.status_code, status.HTTP_200_OK)
+
+    def test_receipt_nonexistent_order_returns_404(self):
+        self.client.force_authenticate(user=self.employee)
+        resp = self.client.get("/api/orders/999999/receipt/")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class KitchenLiveFeedAndWorkflowTests(VDartCafeBaseTestCase):
+
+    def setUp(self):
+        super().setUp()
+        # Seed orders with different categories and statuses
+        self.pending_order = Order.objects.create(
+            user=self.employee, total_tokens=5, status="pending"
+        )
+        OrderItem.objects.create(
+            order=self.pending_order, menu_item=self.coffee, quantity=1, tokens_per_item=5
+        )
+
+        self.approved_order = Order.objects.create(
+            user=self.guest, total_tokens=15, status="approved"
+        )
+        OrderItem.objects.create(
+            order=self.approved_order, menu_item=self.sandwich, quantity=1, tokens_per_item=15
+        )
+
+    def test_staff_live_feed_endpoint(self):
+        self.client.force_authenticate(user=self.staff)
+        resp = self.client.get("/api/staff/orders/live_feed/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("counts", resp.data)
+        self.assertIn("latest_order_id", resp.data)
+        self.assertIn("server_time", resp.data)
+        self.assertGreaterEqual(resp.data["counts"]["pending"], 1)
+        self.assertGreaterEqual(resp.data["counts"]["approved"], 1)
+
+    def test_staff_orders_category_filtering(self):
+        self.client.force_authenticate(user=self.staff)
+
+        # Coffee was auto-categorized as beverage in MenuItem.save()
+        resp_bev = self.client.get("/api/staff/orders/?category=beverage")
+        self.assertEqual(resp_bev.status_code, status.HTTP_200_OK)
+        order_ids = [o["id"] for o in resp_bev.data]
+        self.assertIn(self.pending_order.id, order_ids)
+
+    def test_staff_orders_status_filtering(self):
+        self.client.force_authenticate(user=self.staff)
+
+        resp_pending = self.client.get("/api/staff/orders/?status=pending")
+        self.assertEqual(resp_pending.status_code, status.HTTP_200_OK)
+        for o in resp_pending.data:
+            self.assertEqual(o["status"], "pending")
+
+        resp_approved = self.client.get("/api/staff/orders/?status=approved")
+        self.assertEqual(resp_approved.status_code, status.HTTP_200_OK)
+        for o in resp_approved.data:
+            self.assertEqual(o["status"], "approved")
+
+    def test_employee_orders_includes_server_time_and_token_balance(self):
+        self.client.force_authenticate(user=self.employee)
+        resp = self.client.get("/api/employee/orders/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("today_orders", resp.data)
+        self.assertIn("past_orders", resp.data)
+        self.assertIn("server_time", resp.data)
+        self.assertIn("tokens_balance", resp.data)
+        self.assertEqual(resp.data["tokens_balance"], 50)
+

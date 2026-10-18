@@ -43,4 +43,7 @@ urlpatterns = [
     path('guest/menu/', views.guest_menu, name='guest_menu'),
     path('guest/order/', views.guest_place_order, name='guest_order'),
     path('guest/orders/', views.guest_orders, name='guest_orders'),
+
+    # Order Receipt endpoint
+    path('orders/<int:order_id>/receipt/', views.get_order_receipt, name='order_receipt'),
 ]

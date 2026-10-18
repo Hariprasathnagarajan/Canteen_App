@@ -1,20 +1,22 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { authAPI, fetchCSRFToken, ensureCSRFToken } from '../utils/api';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { authAPI, ensureCSRFToken } from '../utils/api';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getDefaultRoute } from '../utils/routes';
+import LoadingFallback from '../components/canteen/LoadingFallback';
 
 // Helper to clear auth data
+const OUR_COOKIES = ['vcafe_csrftoken', 'csrftoken', 'token', 'auth_token'];
+
 const clearAuthData = () => {
-  // Clear all cookies by setting them to expire in the past
+  // Clear ONLY our own cookies — deleting every cookie on the domain would
+  // wipe sibling apps' cookies that share `localhost`.
   const cookies = document.cookie.split(';');
   cookies.forEach(cookie => {
     const [name] = cookie.split('=').map(c => c.trim());
-    if (name) {
-      // Clear cookie by setting it to expire in the past
+    if (name && OUR_COOKIES.includes(name)) {
       document.cookie = `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
-      // Also clear for subdomains if applicable
       document.cookie = `${name}=; Path=/; Domain=${window.location.hostname}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
       document.cookie = `${name}=; Path=/; Domain=.${window.location.hostname}; Expires=Thu, 01 Jan 1970 00:00:01 GMT;`;
     }
@@ -56,25 +58,49 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // Synchronously initialize user and auth state from localStorage to prevent white screens
+  const [user, setUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    try {
+      return !!localStorage.getItem('user');
+    } catch {
+      return false;
+    }
+  });
+
+  // Only start in loading state if we have NO cached user credentials at all
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !localStorage.getItem('user');
+    } catch {
+      return false;
+    }
+  });
+
   const [error, setError] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const initialCheckedRef = useRef(false);
 
-  // Check if user is authenticated
-  const checkAuth = useCallback(async () => {
+  // Check if user is authenticated with backend session
+  const checkAuth = useCallback(async (isSilent = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       setError(null);
       
       // First ensure we have a CSRF token
-      await ensureCSRFToken();
+      await ensureCSRFToken().catch(() => null);
       
       // Then check if we have a valid session
       const response = await authAPI.getProfile().catch(err => {
-        // Clear auth data if we get a 401
         if (err.response?.status === 401) {
           clearAuthData();
         }
@@ -86,7 +112,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Invalid profile data');
       }
       
-      // Update state with user data
+      // Update state with verified user data
       setUser(userData);
       setIsAuthenticated(true);
       
@@ -104,56 +130,33 @@ export const AuthProvider = ({ children }) => {
       };
       
       localStorage.setItem('user', JSON.stringify(userToStore));
-      
       return userData;
     } catch (error) {
-      console.error('Auth check failed:', error);
-      
-      // Try to get user from localStorage as fallback for offline mode
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser);
-          // Only use stored user if we're not getting auth errors
-          if (error.response?.status !== 401 && parsedUser?.id) {
-            setUser(parsedUser);
-            setIsAuthenticated(true);
-            return parsedUser;
-          }
-        } catch (parseError) {
-          console.error('Failed to parse stored user:', parseError);
-          clearAuthData();
-        }
-      }
-      
-      // Clear auth state
-      setUser(null);
-      setIsAuthenticated(false);
-      
-      // Clear any invalid tokens on auth errors
       if (error.response?.status === 401) {
         clearAuthData();
+        setUser(null);
+        setIsAuthenticated(false);
       }
-      
       return null;
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Check auth status on initial load and when location changes
+  // Check auth status ONCE on initial application mount only
+  // DO NOT re-run on every location/route change (that caused white screens on every navigation)
   useEffect(() => {
-    if (location.pathname !== '/login') {
-      checkAuth();
+    if (initialCheckedRef.current) return;
+    initialCheckedRef.current = true;
+
+    if (location.pathname !== '/login' && location.pathname !== '/reset-password') {
+      const hasStoredUser = !!localStorage.getItem('user');
+      // If we have a cached user, do silent background re-validation (0ms white screen)
+      checkAuth(hasStoredUser);
     } else {
       setLoading(false);
     }
-  }, [location, checkAuth]);
-
-  // Initial auth check on app load
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+  }, [checkAuth, location.pathname]);
 
   const login = async (credentials) => {
     try {
@@ -161,30 +164,17 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       
       // Ensure we have a fresh CSRF token
-      await ensureCSRFToken();
+      await ensureCSRFToken().catch(() => null);
       
       // Make the login request
       const loginResponse = await authAPI.login(credentials);
-      const userFromLogin = loginResponse?.data;
+      const activeUser = loginResponse?.data;
       
-      // Attempt to refresh profile with active session
-      let userData = null;
-      try {
-        userData = await checkAuth();
-      } catch (err) {
-        console.warn('Profile fetch after login encountered an error, falling back to login response:', err);
-      }
-      
-      const activeUser = userData || userFromLogin;
       if (!activeUser || !activeUser.id) {
         throw new Error('Login failed: Invalid user profile data received from server');
       }
       
-      // Update auth state
-      setUser(activeUser);
-      setIsAuthenticated(true);
-      
-      // Store user data in localStorage for session persistence
+      // Store user data in localStorage for immediate session persistence
       const userToStore = {
         id: activeUser.id,
         username: activeUser.username,
@@ -198,13 +188,16 @@ export const AuthProvider = ({ children }) => {
       };
       
       localStorage.setItem('user', JSON.stringify(userToStore));
+
+      // Update state synchronously
+      setUser(activeUser);
+      setIsAuthenticated(true);
+      setLoading(false);
       
-      // Show success message
-      toast.success(`Welcome back, ${userToStore.name}!`);
+      toast.success(`Welcome back, ${userToStore.name} — kitchen is open.`);
       
       // Redirect based on role
       const redirectPath = location.state?.from?.pathname || getDefaultRoute(activeUser.role);
-      
       navigate(redirectPath, { replace: true });
       
       return { success: true, user: activeUser };
@@ -217,9 +210,9 @@ export const AuthProvider = ({ children }) => {
 
       if (!errorMessage) {
         if (error.response?.status === 404) {
-          errorMessage = 'Backend service endpoint not found (404). Please verify that the backend at canteen-app-l261.onrender.com has finished deploying.';
+          errorMessage = 'Canteen service is unavailable right now. Please try again in a moment.';
         } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
-          errorMessage = 'Cannot reach backend server. On Render free tier, the service may take ~30-50 seconds to wake up from sleep. Please wait a moment and try again.';
+          errorMessage = 'Cannot reach the canteen server. Check your connection and try again in a moment.';
         } else {
           errorMessage = error.message || 'Login failed. Please check your credentials.';
         }
@@ -262,7 +255,8 @@ export const AuthProvider = ({ children }) => {
 
   const updateUser = useCallback((userData) => {
     setUser((prev) => {
-      const updated = { ...(prev || {}), ...(userData || {}) };
+      const patch = typeof userData === 'function' ? userData(prev) : userData;
+      const updated = { ...(prev || {}), ...(patch || {}) };
       try {
         localStorage.setItem('user', JSON.stringify(updated));
       } catch (e) {
@@ -304,7 +298,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={contextValue}>
-      {!loading && children}
+      {loading && !user ? <LoadingFallback message="Verifying session…" /> : children}
     </AuthContext.Provider>
   );
 };

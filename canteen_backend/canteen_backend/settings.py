@@ -89,7 +89,11 @@ for wildcard_trusted in ['https://vcafe.netlify.app', 'https://canteen-app-l261.
 # SameSite must be 'None' and Secure must be True.
 IS_PRODUCTION = config('ENVIRONMENT', default='development').lower() == 'production' or not DEBUG
 
-SESSION_COOKIE_NAME = 'sessionid'
+# Namespaced cookie names: local dev shares the `localhost` domain namespace
+# with every other app the developer runs, so generic `sessionid`/`csrftoken`
+# cookies collide and break login (HTTP 400) until the browser cache is wiped.
+# Scoping the names isolates VDart Cafe from sibling apps.
+SESSION_COOKIE_NAME = config('SESSION_COOKIE_NAME', default='vcafe_sessionid')
 SESSION_COOKIE_AGE = 1209600  # 2 weeks
 SESSION_COOKIE_DOMAIN = config('SESSION_COOKIE_DOMAIN', default=None)
 SESSION_COOKIE_PATH = '/'
@@ -97,7 +101,7 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=IS_PRODUCTION, cast=bool)
 SESSION_COOKIE_SAMESITE = 'None' if SESSION_COOKIE_SECURE else 'Lax'
 
-CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_COOKIE_NAME = config('CSRF_COOKIE_NAME', default='vcafe_csrftoken')
 CSRF_COOKIE_AGE = 31449600  # 1 year
 CSRF_COOKIE_DOMAIN = config('CSRF_COOKIE_DOMAIN', default=None)
 CSRF_COOKIE_PATH = '/'

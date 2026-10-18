@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getCSRFToken as getCSRFTokenFromCookie, ensureCSRFCookie } from './cookies';
+import { getCSRFToken as getCSRFTokenFromCookie, ensureCSRFCookie, refreshCSRFToken, CSRF_COOKIE_NAME } from './cookies';
 
 // Determine and normalize API_BASE_URL safely
 const resolveApiBaseUrl = () => {
@@ -31,7 +31,7 @@ export const API_BASE_URL = resolveApiBaseUrl();
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
-  xsrfCookieName: 'csrftoken',
+    xsrfCookieName: CSRF_COOKIE_NAME,
   xsrfHeaderName: 'X-CSRFToken',
   headers: {
     'Content-Type': 'application/json',
@@ -117,65 +117,51 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle session/csrf token refresh
+// Detect a CSRF-validation failure (Django returns 403, DRF can surface 400).
+const isCSRFError = (err) => {
+  const status = err.response?.status;
+  if (status !== 403 && status !== 400) return false;
+  const blob = JSON.stringify(err.response?.data || '').toLowerCase();
+  return blob.includes('csrf');
+};
+
+// Response interceptor — unified handler for CSRF refresh and session expiry
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    
-    // If we got a 403 and it's not a retry, try to refresh the CSRF token
-    if (error.response?.status === 403 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
+
+    // Handle a CSRF failure: force-refresh the token once, then retry.
+    // (Forced refresh — ensureCSRFToken would short-circuit on the same stale token.)
+    if (isCSRFError(error) && originalRequest && !originalRequest._csrfRetry) {
+      originalRequest._csrfRetry = true;
       try {
-        await ensureCSRFToken();
-        // Retry the original request with the new token
+        await refreshCSRFToken(api);
         return api(originalRequest);
       } catch (refreshError) {
         console.error('Failed to refresh CSRF token:', refreshError);
-        // If we can't refresh, redirect to login or show an error
         if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
+          const hadSession = !!localStorage.getItem('user');
+          localStorage.removeItem('user');
+          window.location.href = hadSession ? '/login?reason=expired' : '/login';
         }
       }
     }
-    
+
+    // Handle 401 Unauthorized — clear stored user and redirect to login
+    if (error.response?.status === 401) {
+      const isLoginAttempt = originalRequest?.url?.includes('/login/');
+      const hadSession = !!localStorage.getItem('user');
+      localStorage.removeItem('user');
+      if (!isLoginAttempt && !window.location.pathname.includes('/login')) {
+        window.location.href = hadSession ? '/login?reason=expired' : '/login';
+      }
+    }
+
     return Promise.reject(error);
   }
 );
 
-// Interceptor: Handle responses and errors
-api.interceptors.response.use(
-  (response) => {
-    // You can add any response transformation here if needed
-    return response;
-  },
-  async (error) => {
-    const originalRequest = error.config;
-    
-    // Handle CSRF token issues
-    if (error.response?.status === 403 && error.response.data?.code === 'csrf_token_mismatch') {
-      if (!originalRequest._retry) {
-        originalRequest._retry = true;
-        await ensureCSRFToken();
-        return api(originalRequest);
-      }
-    }
-    
-    // Handle 401 Unauthorized
-    if (error.response?.status === 401) {
-      // Clear any existing auth state
-      localStorage.removeItem('auth');
-      // Redirect to login if not already there
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
-      }
-    }
-    
-    // For other errors, just reject with the error
-    return Promise.reject(error);
-  }
-);
 
 // CSRF fetcher
 export const fetchCSRFToken = () => api.get('/csrf/');
@@ -238,6 +224,7 @@ export const employeeAPI = {
   getMenu: () => api.get('/employee/menu/'),
   placeOrder: (orderData) => api.post('/employee/order/', orderData),
   getOrders: () => api.get('/employee/orders/'),
+  getOrderReceipt: (orderId) => api.get(`/orders/${orderId}/receipt/`),
   getProfile: () => api.get('/profile/'),
 };
 
@@ -246,9 +233,20 @@ export const guestAPI = {
   getMenu: () => api.get('/guest/menu/'),
   placeOrder: (orderData) => api.post('/guest/order/', orderData),
   getOrders: () => api.get('/guest/orders/'),
+  getOrderReceipt: (orderId) => api.get(`/orders/${orderId}/receipt/`),
   getProfile: () => api.get('/profile/'),
 };
 
+
+// Shared payload builder for bulk imports (file upload or pasted text)
+const buildBulkPayload = ({ file = null, text = '', format = '' }) => {
+  if (file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return formData;
+  }
+  return { text, format };
+};
 
 // Staff API
 export const staffAPI = {
@@ -256,7 +254,24 @@ export const staffAPI = {
   createMenuItem: (data) => api.post('/staff/menu/', data),
   updateMenuItem: (id, data) => api.put(`/staff/menu/${id}/`, data),
   deleteMenuItem: (id) => api.delete(`/staff/menu/${id}/`),
-  getOrders: (search) => api.get(`/staff/orders/${search ? `?search=${search}` : ''}`),
+  bulkImportMenuItems: async ({ file = null, text = '', format = '' } = {}) => {
+    const response = await api.post('/staff/menu/bulk-import/', buildBulkPayload({ file, text, format }));
+    return response;
+  },
+  getOrders: (params = '') => {
+    if (typeof params === 'string') {
+      return api.get(`/staff/orders/${params ? `?search=${encodeURIComponent(params)}` : ''}`);
+    }
+    const q = new URLSearchParams();
+    if (params?.search) q.append('search', params.search);
+    if (params?.status && params.status !== 'all') q.append('status', params.status);
+    if (params?.category && params.category !== 'all') q.append('category', params.category);
+    const qs = q.toString();
+    return api.get(`/staff/orders/${qs ? `?${qs}` : ''}`);
+  },
+  getLiveFeed: (sinceId = null) =>
+    api.get(`/staff/orders/live_feed/${sinceId ? `?since_id=${sinceId}` : ''}`),
+  getOrderReceipt: (orderId) => api.get(`/orders/${orderId}/receipt/`),
   updateOrderStatus: (orderId, status) =>
     api.patch(`/staff/orders/${orderId}/update_status/`, { status }),
 };
@@ -305,132 +320,58 @@ export const adminAPI = {
   },
   
   // Token Management
-  
+
   assignTokens: async (shift, tokens = null) => {
     const endpoint = '/admin/tokens/assign/';
     try {
-      // Remove _shift suffix if present to match backend expectations
+      // Normalize _shift suffix to match backend expectations
       const normalizedShift = typeof shift === 'string' ? shift.replace(/_shift$/, '') : shift;
-      console.log(`[API] Assigning tokens for shift: ${normalizedShift}`, tokens ? `(amount: ${tokens})` : '(default quota)');
       const payload = { shift: normalizedShift };
       if (tokens !== null && tokens !== undefined && !isNaN(Number(tokens))) {
         payload.tokens = Number(tokens);
       }
-      const response = await api.post(endpoint, payload);
-      
-      console.log(`[API] Tokens assigned successfully for ${shift} shift:`, {
-        status: response.status,
-        data: response.data
-      });
-      
-      return response;
-      
+      return await api.post(endpoint, payload);
     } catch (error) {
-      console.error(`[API] Error assigning tokens for ${shift} shift:`, {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          data: error.config?.data
-        }
-      });
-      
-      // Re-throw the error to be handled by the caller
+      console.error(`[API] Error assigning tokens for ${shift} shift:`, error.response?.data || error.message);
       throw error;
     }
   },
 
-  assignAllTokens: async () => {
-    const endpoint = '/admin/tokens/assign/';
+  assignAllTokens: async (tokensByShift) => {
     try {
-      console.log('[API] Triggering bulk token assignment for all shifts');
-      const response = await api.post(endpoint, { shift: 'all' });
-      return response;
+      return await api.post('/admin/tokens/assign/', { shift: 'all', tokens: tokensByShift });
     } catch (error) {
-      console.error('[API] Error in bulk token assignment:', error);
+      console.error('[API] Error in bulk token assignment:', error.response?.data || error.message);
       throw error;
     }
   },
-  
+
   getTokenSummary: async () => {
     try {
-      console.log('Fetching token summary from:', `${API_BASE_URL}/admin/tokens/summary/`);
       const response = await api.get('/admin/tokens/summary/');
-      
-      // Log successful response for debugging
-      console.log('Token summary response:', {
-        status: response.status,
-        data: response.data,
-        headers: response.headers
-      });
-      
-      // Ensure the response has the expected structure
+
       if (!response.data || typeof response.data !== 'object') {
-        console.warn('Unexpected response format from token summary:', response);
         throw new Error('Invalid response format from server');
       }
-      
+
       return response;
-      
     } catch (error) {
-      console.error('[API] Error in getTokenSummary:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          headers: error.config?.headers
-        }
-      });
-      
-      // Return a default structure if the API call fails
-      const defaultResponse = {
-        data: {
-          day_shift: { users: [], total_tokens: 0 },
-          mid_shift: { users: [], total_tokens: 0 },
-          night_shift: { users: [], total_tokens: 0 }
-        },
-        status: error.response?.status,
-        statusText: error.response?.statusText
-      };
-      
-      // If we have a response but no data, include the error details
-      if (error.response?.data) {
-        defaultResponse.data = {
-          ...defaultResponse.data,
-          error: error.response.data,
-          status: error.response.status
-        };
-      }
-      
-      return defaultResponse;
+      console.error('[API] Error in getTokenSummary:', error.response?.status, error.response?.data || error.message);
+      throw error;
     }
   },
-  
+
+  bulkImportUsers: async ({ file = null, text = '', format = '' } = {}) => {
+    const response = await api.post('/admin/users/bulk-import/', buildBulkPayload({ file, text, format }));
+    return response;
+  },
+
   // Dashboard endpoint
   getDashboardStats: async () => {
     try {
-      console.log('Fetching dashboard stats from:', `${API_BASE_URL}/admin/dashboard/stats/`);
-      const response = await api.get('/admin/dashboard/stats/');
-      console.log('Dashboard stats response:', {
-        status: response.status,
-        data: response.data,
-        headers: response.headers
-      });
-      return response;
+      return await api.get('/admin/dashboard/stats/');
     } catch (error) {
-      console.error('Error in getDashboardStats:', {
-        message: error.message,
-        response: error.response ? {
-          status: error.response.status,
-          data: error.response.data,
-          headers: error.response.headers
-        } : 'No response',
-        stack: error.stack
-      });
+      console.error('Error in getDashboardStats:', error.response?.status, error.response?.data || error.message);
       throw error;
     }
   },

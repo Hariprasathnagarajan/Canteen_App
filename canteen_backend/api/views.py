@@ -1,3 +1,6 @@
+import csv
+import io
+import json
 from datetime import timedelta, date
 from django.conf import settings
 from django.db import transaction
@@ -16,6 +19,110 @@ from .serializers import (
     MenuItemSerializer, OrderSerializer, ShiftTokenAllocationSerializer, TokenDistributionSerializer,
     PasswordResetRequestSerializer
 )
+
+
+# ---------------------------------------------------------------------------
+# Bulk import helpers — accept CSV, JSON or Excel (.xlsx) file uploads,
+# pasted text, or a plain JSON array so admins can load data in any format.
+# ---------------------------------------------------------------------------
+def _normalize_key(value):
+    return str(value or '').strip().lower().replace('-', '_').replace(' ', '_')
+
+
+def _row_lookup(row, *aliases):
+    for alias in aliases:
+        value = row.get(alias)
+        if value is not None and str(value).strip() != '':
+            return value
+    return None
+
+
+def _rows_from_json_text(text):
+    data = json.loads(text)
+    if isinstance(data, dict):
+        data = data.get('users') or data.get('items') or data.get('data') or []
+    if not isinstance(data, list):
+        raise ValueError('JSON payload must be a list of objects.')
+    return [
+        {_normalize_key(k): v for k, v in row.items()}
+        for row in data if isinstance(row, dict)
+    ]
+
+
+def _rows_from_csv_text(text):
+    reader = csv.DictReader(io.StringIO(text))
+    return [
+        {_normalize_key(k): v for k, v in row.items()}
+        for row in reader
+    ]
+
+
+def _rows_from_uploaded_file(uploaded):
+    name = str(uploaded.name or '').lower()
+    raw = uploaded.read()
+
+    if name.endswith('.xlsx'):
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            raise ValueError('Excel support is not available on the server. Upload CSV or JSON instead.')
+        workbook = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        sheet = workbook.active
+        rows = list(sheet.iter_rows(values_only=True))
+        if not rows:
+            return []
+        headers = [_normalize_key(h) for h in rows[0]]
+        return [
+            dict(zip(headers, row))
+            for row in rows[1:]
+            if any(cell is not None and str(cell).strip() != '' for cell in row)
+        ]
+
+    text = raw.decode('utf-8-sig', errors='replace')
+    if name.endswith('.json'):
+        return _rows_from_json_text(text)
+    return _rows_from_csv_text(text)
+
+
+def _extract_bulk_rows(request, list_keys):
+    """Extract tabular rows from a multipart file, pasted text, or JSON body."""
+    upload = request.FILES.get('file')
+    if upload:
+        return _rows_from_uploaded_file(upload)
+
+    payload = request.data
+
+    if isinstance(payload, list):
+        return [
+            {_normalize_key(k): v for k, v in row.items()}
+            for row in payload if isinstance(row, dict)
+        ]
+
+    if isinstance(payload, dict):
+        text = payload.get('text')
+        if text and str(text).strip():
+            text_str = str(text).strip()
+            fmt = str(payload.get('format') or '').strip().lower()
+            if fmt == 'json' or text_str[:1] in ('[', '{'):
+                return _rows_from_json_text(text_str)
+            return _rows_from_csv_text(text_str)
+
+        for key in list_keys:
+            data = payload.get(key)
+            if isinstance(data, list):
+                return [
+                    {_normalize_key(k): v for k, v in row.items()}
+                    for row in data if isinstance(row, dict)
+                ]
+    return []
+
+
+def _parse_boolish(value, default=True):
+    if value is None or str(value).strip() == '':
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ['true', '1', 'yes', 'y', 'available', 'active']
 
 
 # CSRF token view
@@ -41,17 +148,8 @@ def csrf_token_view(request):
         response['Access-Control-Allow-Headers'] = 'X-CSRFToken, Content-Type, X-Requested-With, Authorization'
         response['Access-Control-Expose-Headers'] = 'X-CSRFToken'
     
-    # Set the CSRF cookie if it doesn't exist
-    if not csrf_token:
-        response.set_cookie(
-            'csrftoken',
-            request.META.get('CSRF_COOKIE'),
-            max_age=60 * 60 * 24 * 7 * 52,  # 1 year
-            httponly=False,
-            samesite=getattr(settings, 'CSRF_COOKIE_SAMESITE', 'Lax'),
-            secure=getattr(settings, 'CSRF_COOKIE_SECURE', False)
-        )
-    
+    # Note: @ensure_csrf_cookie already sets the CSRF cookie using
+    # settings.CSRF_COOKIE_NAME (namespaced), so no manual set_cookie here.
     return response
 
 
@@ -76,11 +174,9 @@ def login_view(request):
     # Set session to expire when browser is closed
     if not request.data.get('remember_me'):
         request.session.set_expiry(0)
-
-    print(request.session.session_key)
-    print(user,user.id)
     response = Response({
         'id': user.id,
+
         'email': user.email,
         'username': user.username,
         'name': user.get_full_name() or user.username,
@@ -95,9 +191,9 @@ def login_view(request):
         'is_superuser': user.is_superuser,
     })
     
-    # Set session cookie
+    # Set session cookie (namespaced name; SessionMiddleware also sets this on login())
     response.set_cookie(
-        'sessionid', 
+        settings.SESSION_COOKIE_NAME, 
         request.session.session_key,
         path='/',
         httponly=True,
@@ -152,7 +248,7 @@ def logout_view(request):
     
     # Delete the session cookie
     response.delete_cookie(
-        'sessionid',
+        settings.SESSION_COOKIE_NAME,
         path='/',
         domain=settings.SESSION_COOKIE_DOMAIN or None,
         samesite=settings.SESSION_COOKIE_SAMESITE,
@@ -160,7 +256,7 @@ def logout_view(request):
     
     # Set an expired CSRF cookie to clear it
     response.set_cookie(
-        'csrftoken',
+        settings.CSRF_COOKIE_NAME,
         '',
         max_age=0,
         path='/',
@@ -233,41 +329,136 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             'message': f'Password for {user.username} has been reset to "{new_password}".'
         })
 
+    @action(detail=False, methods=['post'], url_path='bulk-import')
+    def bulk_import(self, request):
+        try:
+            rows = _extract_bulk_rows(request, ['users'])
+        except (ValueError, json.JSONDecodeError) as exc:
+            return Response({'error': f'Could not parse the uploaded data: {exc}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not rows:
+            return Response(
+                {'error': 'No user rows found. Upload a CSV, JSON or Excel file, or paste the data.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        created_count = 0
+        updated_count = 0
+        errors = []
+
+        for index, row in enumerate(rows, start=1):
+            try:
+                username = str(_row_lookup(row, 'username', 'user_name', 'login') or '').strip()
+                if not username:
+                    errors.append(f'Row {index}: username is required.')
+                    continue
+
+                role = str(_row_lookup(row, 'role', 'user_role') or 'employee').strip().lower()
+                if role not in ['employee', 'guest', 'staff']:
+                    errors.append(f'Row {index}: role must be employee, guest or staff.')
+                    continue
+
+                work_shift = str(_row_lookup(row, 'work_shift', 'shift') or 'day').strip().lower()
+                work_shift = work_shift.replace(' shift', '').replace('_shift', '').strip()
+                if work_shift not in ['day', 'mid', 'night']:
+                    errors.append(f'Row {index}: work_shift must be day, mid or night.')
+                    continue
+
+                user_id_raw = _row_lookup(row, 'user_id', 'userid', 'employee_id', 'emp_id', 'employee_code')
+                user_id = str(user_id_raw).strip() if user_id_raw is not None else None
+
+                email = str(_row_lookup(row, 'email', 'mail', 'email_address') or '').strip()
+                first_name = str(_row_lookup(row, 'first_name', 'firstname', 'given_name') or '').strip()
+                last_name = str(_row_lookup(row, 'last_name', 'lastname', 'surname') or '').strip()
+
+                tokens_raw = _row_lookup(row, 'monthly_tokens', 'tokens', 'token', 'token_balance')
+                tokens = None
+                if tokens_raw is not None:
+                    try:
+                        tokens = int(float(str(tokens_raw).strip()))
+                        if tokens < 0:
+                            raise ValueError
+                    except (ValueError, TypeError):
+                        errors.append(f'Row {index}: tokens must be a non-negative number.')
+                        continue
+
+                if user_id and CustomUser.objects.filter(user_id__iexact=user_id).exclude(username__iexact=username).exists():
+                    errors.append(f'Row {index}: User ID "{user_id}" is already assigned to another user.')
+                    continue
+
+                existing = CustomUser.objects.filter(username__iexact=username).first()
+                if existing:
+                    if user_id:
+                        existing.user_id = user_id
+                    existing.email = email
+                    existing.first_name = first_name
+                    existing.last_name = last_name
+                    existing.role = role
+                    existing.work_shift = work_shift
+                    existing.is_staff = role == 'staff' or existing.is_staff
+                    if tokens is not None:
+                        existing.monthly_tokens = tokens
+                    existing.save()
+                    updated_count += 1
+                else:
+                    password_raw = _row_lookup(row, 'password', 'initial_password')
+                    password = str(password_raw).strip() if password_raw is not None else ''
+                    user = CustomUser(
+                        username=username,
+                        user_id=user_id,
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role=role,
+                        work_shift=work_shift,
+                        monthly_tokens=tokens if tokens is not None else 0,
+                        last_token_reset=timezone.now().date().replace(day=1),
+                    )
+                    user.set_password(password or user_id or username)
+                    if role == 'staff':
+                        user.is_staff = True
+                    user.save()
+                    created_count += 1
+            except Exception as exc:
+                errors.append(f'Row {index}: {exc}')
+
+        return Response({
+            'status': 'success',
+            'created': created_count,
+            'updated': updated_count,
+            'total': len(rows),
+            'errors': errors,
+            'message': f'Imported {created_count} new and updated {updated_count} existing users.'
+        })
+
 
 # Token refresh
 @api_view(['POST'])
 @permission_classes([IsAdmin])
 def refresh_monthly_tokens(request):
-    try:
-        token_count = int(request.data.get('count', 100))
-        if token_count <= 0:
-            return Response(
-                {'error': 'Token count must be a positive number'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        # Get all non-admin, non-staff users
-        users = CustomUser.objects.exclude(role__in=['admin', 'staff'])
-        now = timezone.now().date()
-        
-        # Update tokens for each user
-        updated = users.update(
-            monthly_tokens=token_count,
-            last_token_reset=now
-        )
-        
-        return Response({
-            'message': f'Successfully refreshed tokens for {updated} users',
-            'tokens_assigned': token_count,
-            'users_updated': updated,
-            'reset_date': now
-        })
-        
-    except ValueError:
+    token_count = _parse_token_amount(request.data.get('count'))
+    if token_count is None or token_count <= 0:
         return Response(
-            {'error': 'Invalid token count'},
+            {'error': 'A positive token count is required. Provide "count" in the request body.'},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    # Get all non-admin, non-staff users
+    users = CustomUser.objects.exclude(role__in=['admin', 'staff'])
+    now = timezone.now().date()
+
+    # Update tokens for each user
+    updated = users.update(
+        monthly_tokens=token_count,
+        last_token_reset=now
+    )
+
+    return Response({
+        'message': f'Successfully refreshed tokens for {updated} users',
+        'tokens_assigned': token_count,
+        'users_updated': updated,
+        'reset_date': now
+    })
 
 
 # Staff: Menu management
@@ -276,15 +467,87 @@ class StaffMenuViewSet(viewsets.ModelViewSet):
     serializer_class = MenuItemSerializer
     permission_classes = [IsStaffOrAdmin]
 
+    @action(detail=False, methods=['post'], url_path='bulk-import')
+    def bulk_import(self, request):
+        try:
+            rows = _extract_bulk_rows(request, ['items', 'menu', 'menu_items'])
+        except (ValueError, json.JSONDecodeError) as exc:
+            return Response({'error': f'Could not parse the uploaded data: {exc}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not rows:
+            return Response(
+                {'error': 'No menu rows found. Upload a CSV, JSON or Excel file, or paste the data.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        created_count = 0
+        updated_count = 0
+        errors = []
+
+        for index, row in enumerate(rows, start=1):
+            try:
+                name = str(_row_lookup(row, 'name', 'item', 'item_name', 'dish') or '').strip()
+                if not name:
+                    errors.append(f'Row {index}: item name is required.')
+                    continue
+
+                price_raw = _row_lookup(row, 'price', 'tokens', 'cost', 'price_tokens')
+                if price_raw is None:
+                    errors.append(f'Row {index}: price (tokens) is required.')
+                    continue
+                try:
+                    price = int(float(str(price_raw).strip()))
+                    if price < 1:
+                        raise ValueError
+                except (ValueError, TypeError):
+                    errors.append(f'Row {index}: price must be a positive whole number of tokens.')
+                    continue
+
+                description = str(_row_lookup(row, 'description', 'details', 'notes') or '').strip()
+                category_raw = str(_row_lookup(row, 'category', 'type') or '').strip().lower()
+                category = category_raw if category_raw in ['meal', 'snack', 'beverage'] else None
+                is_available = _parse_boolish(_row_lookup(row, 'is_available', 'available', 'status'), default=True)
+
+                existing = MenuItem.objects.filter(name__iexact=name).first()
+                if existing:
+                    existing.price = price
+                    existing.description = description
+                    existing.is_available = is_available
+                    if category:
+                        existing.category = category
+                    existing.save()
+                    updated_count += 1
+                else:
+                    item = MenuItem(
+                        name=name,
+                        price=price,
+                        description=description,
+                        is_available=is_available,
+                        category=category or 'meal',
+                    )
+                    item.save()
+                    created_count += 1
+            except Exception as exc:
+                errors.append(f'Row {index}: {exc}')
+
+        return Response({
+            'status': 'success',
+            'created': created_count,
+            'updated': updated_count,
+            'total': len(rows),
+            'errors': errors,
+            'message': f'Imported {created_count} new and updated {updated_count} existing menu items.'
+        })
+
 
 # Staff: Order management
 class StaffOrderViewSet(viewsets.ModelViewSet):
-    queryset = Order.objects.all()
+    queryset = Order.objects.select_related('user').prefetch_related('order_items__menu_item').all()
     serializer_class = OrderSerializer
     permission_classes = [IsStaffOrAdmin]
 
     def get_queryset(self):
-        queryset = Order.objects.all()
+        queryset = Order.objects.select_related('user').prefetch_related('order_items__menu_item').all()
         search = self.request.query_params.get('search')
         if search:
             query = Q(user__username__icontains=search) | Q(user__user_id__icontains=search)
@@ -294,7 +557,49 @@ class StaffOrderViewSet(viewsets.ModelViewSet):
                 except ValueError:
                     pass
             queryset = queryset.filter(query)
+
+        status_param = self.request.query_params.get('status')
+        if status_param and status_param != 'all':
+            queryset = queryset.filter(status=status_param)
+
+        category_param = self.request.query_params.get('category')
+        if category_param and category_param != 'all':
+            queryset = queryset.filter(order_items__menu_item__category=category_param).distinct()
+
         return queryset
+
+    @action(detail=False, methods=['get'])
+    def live_feed(self, request):
+        """
+        Lightweight status polling endpoint for Kitchen Display.
+        Minimizes DB queries using prefetching and aggregate counts.
+        """
+        today = timezone.now().date()
+        today_orders = Order.objects.filter(created_at__date=today)
+
+        counts = {
+            'pending': today_orders.filter(status='pending').count(),
+            'approved': today_orders.filter(status='approved').count(),
+            'completed': today_orders.filter(status='completed').count(),
+            'declined': today_orders.filter(status='declined').count(),
+            'total': today_orders.count(),
+        }
+
+        latest_order = Order.objects.order_by('-id').first()
+        latest_order_id = latest_order.id if latest_order else 0
+
+        since_id = request.query_params.get('since_id')
+        new_orders = []
+        if since_id and str(since_id).isdigit():
+            qs = Order.objects.filter(id__gt=int(since_id)).select_related('user').prefetch_related('order_items__menu_item').order_by('-id')[:20]
+            new_orders = OrderSerializer(qs, many=True).data
+
+        return Response({
+            'counts': counts,
+            'latest_order_id': latest_order_id,
+            'server_time': timezone.now().isoformat(),
+            'new_orders': new_orders,
+        })
 
     @action(detail=True, methods=['patch', 'post'])
     def update_status(self, request, pk=None):
@@ -468,7 +773,7 @@ def employee_place_order(request):
 @api_view(['GET'])
 @permission_classes([IsEmployee])
 def employee_orders(request):
-    orders = Order.objects.filter(user=request.user).prefetch_related('order_items__menu_item')
+    orders = Order.objects.filter(user=request.user).select_related('user').prefetch_related('order_items__menu_item')
     today = timezone.now().date()
 
     today_orders = orders.filter(created_at__date=today)
@@ -479,7 +784,9 @@ def employee_orders(request):
 
     return Response({
         'today_orders': today_serializer.data,
-        'past_orders': past_serializer.data
+        'past_orders': past_serializer.data,
+        'server_time': timezone.now().isoformat(),
+        'tokens_balance': request.user.current_tokens(),
     })
 
 
@@ -496,7 +803,7 @@ def guest_menu(request):
 @api_view(['GET'])
 @permission_classes([IsGuest])
 def guest_orders(request):
-    orders = Order.objects.filter(user=request.user).prefetch_related('order_items__menu_item')
+    orders = Order.objects.filter(user=request.user).select_related('user').prefetch_related('order_items__menu_item')
     today = timezone.now().date()
 
     today_orders = orders.filter(created_at__date=today)
@@ -507,7 +814,9 @@ def guest_orders(request):
 
     return Response({
         'today_orders': today_serializer.data,
-        'past_orders': past_serializer.data
+        'past_orders': past_serializer.data,
+        'server_time': timezone.now().isoformat(),
+        'tokens_balance': request.user.current_tokens(),
     })
 
 
@@ -518,43 +827,140 @@ def guest_place_order(request):
     return _process_order_placement(request)
 
 
+# 🧾 Digital Receipt Generator
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_order_receipt(request, order_id):
+    """
+    Retrieve structured, corporate-audit-ready digital token receipt for an order.
+    Allowed only for order owner or staff/admin.
+    """
+    try:
+        order = Order.objects.select_related('user').prefetch_related('order_items__menu_item').get(id=order_id)
+    except Order.DoesNotExist:
+        return Response({'error': f'Order #{order_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Security check: must be owner or staff/admin
+    if order.user != request.user and request.user.role not in ['admin', 'staff'] and not request.user.is_superuser:
+        return Response({'error': 'You do not have permission to view this receipt.'}, status=status.HTTP_403_FORBIDDEN)
+
+    user = order.user
+    items_breakdown = []
+    for item in order.order_items.all():
+        items_breakdown.append({
+            'id': item.id,
+            'name': item.menu_item.name,
+            'category': getattr(item.menu_item, 'category', 'meal'),
+            'quantity': item.quantity,
+            'tokens_per_item': item.tokens_per_item,
+            'total_tokens': item.total_tokens,
+        })
+
+    receipt_number = f"VDART-RCPT-{order.id:05d}"
+    user_id_tag = (user.user_id or user.username)[:6].upper()
+    verification_code = f"VDC-{order.id}-{order.total_tokens}TK-{user_id_tag}"
+
+    receipt_data = {
+        'receipt_number': receipt_number,
+        'order_id': order.id,
+        'created_at': order.created_at.isoformat(),
+        'updated_at': order.updated_at.isoformat(),
+        'status': order.status,
+        'total_tokens': order.total_tokens,
+        'tokens_refunded': order.tokens_refunded,
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'name': user.get_full_name() or user.username,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'user_id': user.user_id,
+            'work_shift': user.work_shift,
+            'role': user.role,
+        },
+        'items': items_breakdown,
+        'items_count': sum(i['quantity'] for i in items_breakdown),
+        'payment_method': 'Corporate Shift Token Allowance',
+        'cafe_info': {
+            'name': 'VDart Cafe',
+            'tagline': 'Corporate Canteen & Refreshment Lounge',
+            'location': 'VDart Technologies Global Headquarters',
+            'canteen_code': 'VDART-HQ-01',
+            'support_contact': 'canteen-helpdesk@vdart.com',
+        },
+        'verification_code': verification_code,
+    }
+    return Response(receipt_data)
+
+
 # Token Management
+def _parse_token_amount(raw_value):
+    """Return a valid non-negative integer token amount, or None if invalid."""
+    if raw_value is None or str(raw_value).strip() == '':
+        return None
+    try:
+        amount = int(float(str(raw_value).strip()))
+    except (ValueError, TypeError):
+        return None
+    if amount < 0:
+        return None
+    return amount
+
+
+def _allocate_shift_tokens(shift, token_amount, month_start):
+    """Create/update the audit record and sync every user's wallet in the shift."""
+    allocation, _ = ShiftTokenAllocation.objects.get_or_create(
+        shift=shift,
+        allocation_month=month_start,
+        defaults={'tokens_per_user': token_amount}
+    )
+    allocation.tokens_per_user = token_amount
+    allocation.save()  # Triggers TokenDistribution sync for employees + guests
+
+    return CustomUser.objects.filter(
+        work_shift=shift,
+        role__in=['employee', 'guest']
+    ).count()
+
+
 @api_view(['POST'])
 @permission_classes([IsAdmin])
 def assign_tokens(request):
     shift = (request.data.get('shift') or '').strip().lower()
     # Normalize shift if it comes with '_shift' suffix
     shift = shift.replace('_shift', '')
-    
-    shift_limits = {'day': 50, 'mid': 75, 'night': 100}
+    raw_tokens = request.data.get('tokens')
+    month_start = timezone.now().date().replace(day=1)
 
     # Support allocating all shifts in a single atomic transaction
     if shift == 'all':
+        amounts = {}
+        if isinstance(raw_tokens, dict):
+            for s in ['day', 'mid', 'night']:
+                value = raw_tokens.get(s, raw_tokens.get(f'{s}_shift'))
+                amount = _parse_token_amount(value)
+                if amount is None:
+                    return Response(
+                        {'error': f'A valid token amount is required for the {s} shift.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                amounts[s] = amount
+        else:
+            shared_amount = _parse_token_amount(raw_tokens)
+            if shared_amount is None:
+                return Response(
+                    {'error': 'Provide token amounts for all shifts, e.g. {"tokens": {"day": 50, "mid": 75, "night": 100}}.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            amounts = {s: shared_amount for s in ['day', 'mid', 'night']}
+
         with transaction.atomic():
-            month_start = timezone.now().date().replace(day=1)
             total_updated = 0
             details = {}
             for s in ['day', 'mid', 'night']:
-                amt = shift_limits[s]
-                allocation, _ = ShiftTokenAllocation.objects.get_or_create(
-                    shift=s,
-                    allocation_month=month_start,
-                    defaults={'tokens_per_user': amt}
-                )
-                allocation.tokens_per_user = amt
-                allocation.save()
-
-                users_in_shift = CustomUser.objects.filter(
-                    work_shift=s,
-                    role__in=['employee', 'guest']
-                )
-                for u in users_in_shift:
-                    if u.role == 'guest':
-                        u.monthly_tokens = amt
-                        u.save(update_fields=['monthly_tokens'])
-                cnt = users_in_shift.count()
+                cnt = _allocate_shift_tokens(s, amounts[s], month_start)
                 total_updated += cnt
-                details[s] = {'tokens': amt, 'users': cnt}
+                details[s] = {'tokens': amounts[s], 'users': cnt}
 
             return Response({
                 'status': 'success',
@@ -569,36 +975,16 @@ def assign_tokens(request):
             {'error': f'Invalid shift "{shift}". Must be day, mid, night, or all.'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
-    
-    token_amount = request.data.get('tokens')
-    try:
-        token_amount = int(token_amount) if token_amount is not None else shift_limits[shift]
-        if token_amount < 0:
-            return Response({'error': 'Token amount cannot be negative'}, status=status.HTTP_400_BAD_REQUEST)
-    except (ValueError, TypeError):
-        token_amount = shift_limits[shift]
+
+    token_amount = _parse_token_amount(raw_tokens)
+    if token_amount is None:
+        return Response(
+            {'error': 'A valid token amount is required. Enter the number of tokens to allocate.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     with transaction.atomic():
-        month_start = timezone.now().date().replace(day=1)
-        
-        # Create or update ShiftTokenAllocation audit record
-        allocation, _ = ShiftTokenAllocation.objects.get_or_create(
-            shift=shift,
-            allocation_month=month_start,
-            defaults={'tokens_per_user': token_amount}
-        )
-        allocation.tokens_per_user = token_amount
-        allocation.save()  # Triggers save() which creates/updates TokenDistribution and syncs users
-
-        users_in_shift = CustomUser.objects.filter(
-            work_shift=shift,
-            role__in=['employee', 'guest']
-        )
-        for u in users_in_shift:
-            if u.role == 'guest':
-                u.monthly_tokens = token_amount
-                u.save(update_fields=['monthly_tokens'])
-        updated_count = users_in_shift.count()
+        updated_count = _allocate_shift_tokens(shift, token_amount, month_start)
 
         return Response({
             'status': 'success',
@@ -623,12 +1009,16 @@ def get_token_summary(request):
     }
     
     for user in users:
+        full_name = f"{user.first_name} {user.last_name}".strip()
         user_data = {
             'id': user.id,
             'username': user.username,
-            'name': f"{user.first_name} {user.last_name}".strip(),
+            'name': full_name if full_name else user.username,
+            'user_id': user.user_id,
+            'email': user.email,
             'tokens': user.monthly_tokens,
-            'role': user.role
+            'role': user.role,
+            'work_shift': user.work_shift
         }
         
         shift_key = f"{user.work_shift}_shift" if user.work_shift and not user.work_shift.endswith('_shift') else user.work_shift

@@ -32,16 +32,9 @@ class CustomUser(AbstractUser):
         # Admin and staff don't use tokens
         if self.role in ['admin', 'staff']:
             return 0
-            
-        # Check if we need to reset tokens (new month)
-        now = timezone.now().date()
-        if now.month != self.last_token_reset.month or now.year != self.last_token_reset.year:
-            shift_limits = {'day': 50, 'mid': 75, 'night': 100}
-            base_tokens = shift_limits.get(self.work_shift, 50) if self.role == 'employee' else (30 if self.role == 'guest' else 0)
-            self.monthly_tokens = base_tokens
-            self.last_token_reset = now.replace(day=1)
-            self.save(update_fields=['monthly_tokens', 'last_token_reset'])
-            
+
+        # Tokens are only ever set explicitly by an administrator through the
+        # Token Allocation page. There are no implicit defaults or mock resets.
         return self.monthly_tokens
 
     def __str__(self):
@@ -49,14 +42,29 @@ class CustomUser(AbstractUser):
 
 
 class MenuItem(models.Model):
+    CATEGORY_CHOICES = [
+        ('meal', 'Meals / Food'),
+        ('snack', 'Snacks'),
+        ('beverage', 'Beverages'),
+    ]
     name = models.CharField(max_length=100)
     description = models.TextField()
     price = models.PositiveIntegerField()  
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='meal')
     is_available = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def save(self, *args, **kwargs):
+        if not self.category or self.category == 'meal':
+            name_lower = (self.name or '').lower()
+            if any(w in name_lower for w in ['coffee', 'tea', 'lassi', 'buttermilk', 'beverage', 'juice', 'shake', 'water', 'soda']):
+                self.category = 'beverage'
+            elif any(w in name_lower for w in ['samosa', 'vada', 'snack', 'bajji', 'pakoda', 'puff', 'bonda', 'biscuit', 'cookie']):
+                self.category = 'snack'
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.get_category_display()})"
 
 
 class Order(models.Model):
@@ -131,7 +139,7 @@ class ShiftTokenAllocation(models.Model):
         # Apply tokens to all users in this shift
         # Use the allocation_month just saved, not the current month
         month_start = self.allocation_month
-        users = CustomUser.objects.filter(work_shift=self.shift, role='employee')
+        users = CustomUser.objects.filter(work_shift=self.shift, role__in=['employee', 'guest'])
         for user in users:
             dist, _ = TokenDistribution.objects.get_or_create(
                 user=user,

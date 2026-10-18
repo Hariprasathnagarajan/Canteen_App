@@ -1,32 +1,42 @@
-import { memo, useState } from 'react';
-import { Soup } from 'lucide-react';
+import { memo } from 'react';
+import { EMPTY_ART } from '../lineart';
+
+const PALETTES = [
+  ['#DBE9FF', '#BDD6FF'],
+  ['#E2E8F0', '#CBD5E1'],
+  ['#E0E9FF', '#C7D7FE'],
+  ['#D9E2EC', '#BCCEE4'],
+  ['#E8EDF3', '#CFD8E3'],
+  ['#DCE6F5', '#BFDBFE'],
+  ['#E3E7EE', '#C4D0E0'],
+  ['#DEE7F2', '#B9C9DF'],
+  ['#E6EAF0', '#CDD6E1'],
+  ['#D7E3F4', '#B3C7E8'],
+];
+
+const GLYPHS = ['cup', 'croissant', 'teapot', 'pastry', 'tray', 'beans'];
+
+const hashSeed = (seed) => {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return h;
+};
 
 const FoodImage = memo(function FoodImage({ seed, alt, className = '', imgClassName = '' }) {
-  const [failed, setFailed] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const src = `https://picsum.photos/seed/${encodeURIComponent(seed)}/800/600`;
-
-  if (failed) {
-    return (
-      <div className={`flex items-center justify-center bg-gradient-to-br from-cream-dark to-cream-deep ${className}`}>
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/80 shadow-card">
-          <Soup className="h-6 w-6 text-ember-600" strokeWidth={2} />
-        </div>
-        <span className="sr-only">{alt}</span>
-      </div>
-    );
-  }
+  const [from, to] = PALETTES[hashSeed(seed || 'canteen') % PALETTES.length];
+  const Art = EMPTY_ART[GLYPHS[hashSeed(seed || 'canteen') % GLYPHS.length]];
 
   return (
-    <div className={`relative overflow-hidden bg-cream-dark ${className}`}>
-      {!loaded && <div className="absolute inset-0 skeleton-shimmer" />}
-      <img
-        src={src}
-        alt={alt}
-        loading="lazy"
-        onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
-        className={`h-full w-full object-cover transition-all duration-500 ${loaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'} ${imgClassName}`}
+    <div
+      role="img"
+      aria-label={alt}
+      className={`relative flex items-center justify-center overflow-hidden ${className}`}
+      style={{ backgroundImage: `linear-gradient(135deg, ${from}, ${to})` }}
+    >
+      <Art
+        className={`h-1/2 w-1/2 max-h-10 max-w-10 text-slate-700/40 ${imgClassName}`}
       />
     </div>
   );

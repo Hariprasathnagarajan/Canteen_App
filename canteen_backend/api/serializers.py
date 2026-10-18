@@ -34,22 +34,18 @@ class CustomUserCreateSerializer(serializers.ModelSerializer):
             user_id = None
             validated_data['user_id'] = None
 
-        role = validated_data.get('role', 'employee')
         user = CustomUser(**validated_data)
 
         initial_password = user_id if user_id else user.username
         user.set_password(initial_password)
 
-        if user.role == 'employee':
-            shift_limits = {'day': 50, 'mid': 75, 'night': 100}
-            user.monthly_tokens = shift_limits.get(user.work_shift, 50)
-            user.last_token_reset = timezone.now().date().replace(day=1)
-        elif user.role == 'guest':
-            user.monthly_tokens = 30
-            user.last_token_reset = timezone.now().date().replace(day=1)
-        elif user.role == 'staff':
+        # Tokens are never auto-allocated. New users start at 0 and an
+        # administrator assigns tokens explicitly via Token Allocation.
+        user.monthly_tokens = 0
+        user.last_token_reset = timezone.now().date().replace(day=1)
+
+        if user.role == 'staff':
             user.is_staff = True
-            user.monthly_tokens = 0
 
         user.save()
         return user

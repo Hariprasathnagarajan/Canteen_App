@@ -1,54 +1,84 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Save, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Upload, UtensilsCrossed } from 'lucide-react';
 import { staffAPI } from '../../utils/api';
 import { toast } from 'react-toastify';
+import BulkUploadPanel from '../../components/BulkUploadPanel';
+import SectionHeading from '../../components/canteen/SectionHeading';
+import FoodImage from '../../components/canteen/FoodImage';
+import EmptyState from '../../components/canteen/EmptyState';
+import MenuSkeleton from '../../components/canteen/MenuSkeleton';
+
+const MENU_TEMPLATE_CSV = [
+  'name,price,description,category,is_available',
+  'Filter Coffee,15,Fresh filter coffee,beverage,true',
+  'Veg Biryani,50,Fragrant veg biryani with raita,meal,true',
+  'Samosa,10,Crispy potato samosa,snack,true',
+].join('\r\n');
 
 const MenuForm = ({ editingItem, formData, setFormData, handleSubmit, resetForm }) => (
-  <div className="p-4 mb-4 bg-white shadow-sm rounded-xl">
-    <h3 className="mb-4 text-lg font-semibold">
-      {editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}
-    </h3>
+  <div className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-card">
+    <div className="flex items-center justify-between mb-5 border-b border-slate-100 pb-4">
+      <div>
+        <h3 className="text-lg font-bold text-ink">
+          {editingItem ? 'Edit Dish Details' : 'Add New Dish to Menu'}
+        </h3>
+        <p className="text-xs text-ink-mute mt-0.5">
+          {editingItem ? `Updating ${editingItem.name}` : 'Dishes added here are immediately live and visible to diners.'}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={resetForm}
+        aria-label="Close form"
+        className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+      >
+        <X size={18} />
+      </button>
+    </div>
+
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block mb-1 text-sm font-medium text-gray-700">
-          Item Name
-        </label>
+        <label className="field-label">Item Name</label>
         <input
           type="text"
           required
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          placeholder="e.g. South Indian Filter Coffee"
+          className="field-input"
         />
       </div>
       
       <div>
-        <label className="block mb-1 text-sm font-medium text-gray-700">
-          Description
-        </label>
+        <label className="field-label">Description</label>
         <textarea
           rows={3}
           required
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          placeholder="Brief culinary note or ingredients..."
+          className="field-input resize-none"
         />
       </div>
       
       <div>
-        <label className="block mb-1 text-sm font-medium text-gray-700">
-          Price (Tokens)
-        </label>
+        <label className="field-label">Price (Tokens)</label>
         <input
           type="number"
           required
           min="1"
           value={formData.price}
           onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          placeholder="e.g. 15"
+          className="field-input font-mono-tokens font-bold"
         />
       </div>
-      <div className="flex items-center">
+
+      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5">
+        <div>
+          <p className="text-xs font-bold text-ink">Available for ordering</p>
+          <p className="text-[11px] text-ink-mute">When disabled, this dish cannot be added to customer thalis.</p>
+        </div>
         <button
           type="button"
           role="switch"
@@ -57,35 +87,31 @@ const MenuForm = ({ editingItem, formData, setFormData, handleSubmit, resetForm 
             setFormData({ ...formData, is_available: !formData.is_available })
           }
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            formData.is_available ? 'bg-primary' : 'bg-gray-300'
+            formData.is_available ? 'bg-cobalt-600' : 'bg-slate-300'
           }`}
         >
           <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+            className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
               formData.is_available ? 'translate-x-6' : 'translate-x-1'
             }`}
           />
         </button>
-        <label htmlFor="is_available" className="ml-2 text-sm text-gray-700">
-          Available for ordering
-        </label>
       </div>
       
-      <div className="flex space-x-2">
-        <button
-          type="submit"
-          className="flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-lg bg-primary hover:bg-ember-600"
-        >
-          <Save size={16} />
-          <span>{editingItem ? 'Update' : 'Add'} Item</span>
-        </button>
+      <div className="flex items-center justify-end gap-2.5 pt-2">
         <button
           type="button"
           onClick={resetForm}
-          className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors bg-stone-500 rounded-xl hover:bg-stone-600"
+          className="btn-tactile rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-ink-soft hover:bg-slate-50 hover:text-ink transition"
         >
-          <X size={16} />
-          <span>Cancel</span>
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="btn-tactile inline-flex items-center gap-1.5 rounded-2xl bg-cobalt-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-cobalt-700 shadow-cobalt transition"
+        >
+          <Save size={15} />
+          <span>{editingItem ? 'Save Changes' : 'Publish Dish'}</span>
         </button>
       </div>
     </form>
@@ -97,6 +123,7 @@ const StaffMenu = () => {
   const [loading, setLoading] = useState(true);
   const [editingItem, setEditingItem] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showBulkPanel, setShowBulkPanel] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -110,6 +137,7 @@ const StaffMenu = () => {
       setMenuItems(response.data.results || response.data);
     } catch (error) {
       console.error('Error fetching menu:', error);
+      toast.error('Could not load the menu. Please refresh the page.');
     } finally {
       setLoading(false);
     }
@@ -215,95 +243,166 @@ const StaffMenu = () => {
   };
 
   return (
-    <div className="pb-10">      
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold text-gray-900">Menu Management</h1>
-          {!showAddForm && !editingItem && (
+    <div className="pb-16 space-y-6">      
+      {/* Header and Controls */}
+      <SectionHeading
+        kicker="Kitchen Catalog · Live Menu Control"
+        title="Menu Management"
+        hint="Live dishes, daily token prices, and counter availability for employees and guests."
+        right={
+          !showAddForm && !editingItem && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowBulkPanel((prev) => !prev)}
+                className="btn-tactile flex items-center px-4 py-2.5 space-x-2 font-semibold text-slate-800 bg-white border rounded-2xl border-slate-200 hover:bg-slate-50 shadow-sm transition-colors text-xs sm:text-sm"
+              >
+                <Upload size={16} />
+                <span>Bulk Upload</span>
+              </button>
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="btn-tactile flex items-center px-4 py-2.5 space-x-2 text-white transition-colors rounded-2xl bg-cobalt-600 hover:bg-cobalt-700 shadow-cobalt text-xs sm:text-sm font-bold"
+              >
+                <Plus size={16} />
+                <span>Add Item</span>
+              </button>
+            </div>
+          )
+        }
+      />
+
+      {showBulkPanel && (
+        <BulkUploadPanel
+          title="Bulk Upload Menu Items"
+          description="Import dishes from a CSV, JSON or Excel (.xlsx) file — or paste rows. Existing item names are updated; new ones are created."
+          templateFilename="VDart_Cafe_Menu_Template.csv"
+          templateContent={MENU_TEMPLATE_CSV}
+          importFn={staffAPI.bulkImportMenuItems}
+          onImported={(data) => {
+            const created = data?.created ?? 0;
+            const updated = data?.updated ?? 0;
+            toast.success(`Menu imported — ${created} created, ${updated} updated.`);
+            fetchMenu();
+          }}
+          onClose={() => setShowBulkPanel(false)}
+        />
+      )}
+
+      {(showAddForm || editingItem) && (
+        <MenuForm
+          editingItem={editingItem}
+          formData={formData}
+          setFormData={setFormData}
+          handleSubmit={handleSubmit}
+          resetForm={resetForm}
+        />
+      )}
+
+      {loading ? (
+        <MenuSkeleton count={6} />
+      ) : menuItems.length === 0 ? (
+        <EmptyState
+          icon={UtensilsCrossed}
+          art="tray"
+          title="No Dishes in Catalog"
+          hint="Start by adding today's dishes manually or import a batch via CSV."
+          action={
             <button
               onClick={() => setShowAddForm(true)}
-          className="btn-tactile flex items-center px-4 py-2 space-x-2 text-white transition-colors rounded-xl bg-primary hover:bg-ember-600 shadow-ember"
+              className="btn-tactile rounded-2xl bg-cobalt-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-cobalt-700 shadow-cobalt"
             >
-              <Plus size={16} />
-              <span>Add Item</span>
+              Add First Dish
             </button>
-          )}
-        </div>
-
-        {(showAddForm || editingItem) && (
-          <MenuForm
-            editingItem={editingItem}
-            formData={formData}
-            setFormData={setFormData}
-            handleSubmit={handleSubmit}
-            resetForm={resetForm}
-          />
-        )}
-
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-12 h-12 border-b-2 rounded-full animate-spin border-primary"></div>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {menuItems.map((item) => (
-              <div key={item.id} className="overflow-hidden bg-white shadow-sm rounded-xl">
-                <div className="p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-lg font-semibold text-gray-900">{item.name}</h3>
-                    <div className="flex items-center space-x-2">
-                      <span className="px-2 py-1 text-sm font-medium text-ember-800 bg-ember-100 rounded-lg">
-                        {item.price} tokens
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {menuItems.map((item) => (
+            <div
+              key={item.id}
+              className="spotlight-card group relative flex flex-col justify-between overflow-hidden rounded-3xl border border-slate-200/80 bg-white p-4 shadow-card hover:border-cobalt-300 transition-all duration-200"
+            >
+              <div>
+                <div className="flex items-start gap-3.5">
+                  <FoodImage
+                    seed={`canteen-${item.id}-${item.name}`}
+                    alt={item.name}
+                    className="h-16 w-16 shrink-0 rounded-2xl shadow-2xs"
+                    imgClassName="group-hover:scale-105 transition-transform duration-200"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-base font-bold text-ink leading-tight group-hover:text-cobalt-900 transition-colors">
+                      {item.name}
+                    </h3>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center rounded-full border border-cobalt-200 bg-cobalt-50 px-2 py-0.5 font-mono-tokens text-xs font-bold text-cobalt-800">
+                        {item.price} tk
                       </span>
-                      <div className="flex items-center space-x-1">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          item.is_available 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {item.is_available ? 'Available' : 'Unavailable'}
-                        </span>
-                        <button 
-                          type="button"
-                          onClick={() => toggleAvailability(item.id, item.is_available)}
-                          className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${
-                            item.is_available ? 'bg-green-500' : 'bg-gray-300'
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              item.is_available ? 'translate-x-5' : 'translate-x-1'
-                            }`}
-                          />
-                        </button>
-                      </div>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        item.is_available 
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                          : 'bg-slate-100 text-slate-600 border border-slate-200'
+                      }`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${item.is_available ? 'bg-emerald-500 animate-breathe' : 'bg-slate-400'}`} />
+                        {item.is_available ? 'Live on pass' : 'Resting'}
+                      </span>
                     </div>
                   </div>
-                  
-                  <p className="mb-4 text-sm text-gray-600">{item.description}</p>
-                  
-                  <div className="flex justify-between items-center space-x-2 border-t border-stone-100 pt-3">
-                    <button
-                      onClick={() => handleEdit(item)}
-                      className="btn-tactile flex items-center px-3 py-1 space-x-1 text-ember-700 transition-colors rounded-lg hover:text-ember-800 hover:bg-ember-50"
-                    >
-                      <Edit2 size={14} />
-                      <span>Edit</span>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="flex items-center px-3 py-1 space-x-1 text-red-600 transition-colors rounded-lg hover:text-red-800 hover:bg-red-50"
-                    >
-                      <Trash2 size={14} />
-                      <span>Delete</span>
-                    </button>
-                  </div>
+                </div>
+
+                <p className="mt-3 line-clamp-2 text-xs text-ink-mute leading-relaxed">
+                  {item.description || 'No description provided.'}
+                </p>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                {/* Availability Toggle */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={item.is_available}
+                    onClick={() => toggleAvailability(item.id, item.is_available)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      item.is_available ? 'bg-emerald-600' : 'bg-slate-300'
+                    }`}
+                    title={item.is_available ? 'Click to pause dish' : 'Click to activate dish'}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                        item.is_available ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className="text-xs font-semibold text-ink-mute">
+                    {item.is_available ? 'Available' : 'Paused'}
+                  </span>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleEdit(item)}
+                    className="btn-tactile inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold text-cobalt-700 hover:bg-cobalt-50 hover:text-cobalt-800 transition"
+                    title="Edit dish details"
+                  >
+                    <Edit2 size={13} />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="btn-tactile inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition"
+                    title="Delete dish"
+                  >
+                    <Trash2 size={13} />
+                    <span>Delete</span>
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

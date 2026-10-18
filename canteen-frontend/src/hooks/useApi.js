@@ -83,11 +83,21 @@ export const useApi = (options = {}) => {
   const requestIdRef = useRef(0);
   const isMounted = useRef(true);
   const abortControllerRef = useRef(null);
+  // Refs keep callApi identity stable across renders (loading state and
+  // callbacks live in refs so they never invalidate the useCallback below).
+  const loadingRef = useRef(false);
+  const callbacksRef = useRef({ onSuccess, onError });
+  callbacksRef.current = { onSuccess, onError };
   
   // Cleanup on unmount
   useEffect(() => {
+    // React 18 StrictMode mounts, unmounts, then remounts components in
+    // development. The flag must be reset here (not just in useRef init),
+    // otherwise the remounted instance would permanently discard responses.
+    isMounted.current = true;
     return () => {
       isMounted.current = false;
+      loadingRef.current = false;
       // Clean up any pending requests
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -97,6 +107,13 @@ export const useApi = (options = {}) => {
   }, []);
   
   const callApi = useCallback(async (apiCall, ...args) => {
+    // Skip if already loading and not forced (check BEFORE incrementing requestIdRef
+    // so we do not invalidate in-flight request completion in finally block).
+    if (skipIfLoading && loadingRef.current) {
+      console.log(`[useApi] Skipping duplicate request: ${apiCall.name || 'anonymous'}`);
+      return { aborted: true, requestId: requestIdRef.current };
+    }
+
     // Generate a unique ID for this request
     const requestId = ++requestIdRef.current;
     
@@ -106,12 +123,6 @@ export const useApi = (options = {}) => {
     
     // Generate a request key for deduplication
     const requestKey = `${apiCall.name || 'anonymous'}-${JSON.stringify(args)}`;
-    
-    // Skip if already loading and not forced
-    if (skipIfLoading && loading) {
-      console.log(`[useApi] Skipping duplicate request (${requestId}): ${requestKey}`);
-      return { aborted: true, requestId };
-    }
     
     // Check if there's an existing request with the same key
     if (activeRequests.has(requestKey)) {
@@ -126,6 +137,7 @@ export const useApi = (options = {}) => {
     activeRequests.set(requestKey, controller);
     
     // Set loading state
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     
@@ -186,9 +198,10 @@ export const useApi = (options = {}) => {
         setData(normalizedResponse.data);
         setLoading(false);
         
-        if (onSuccess) {
+        const successCallback = callbacksRef.current.onSuccess;
+        if (successCallback) {
           try {
-            onSuccess(normalizedResponse.data);
+            successCallback(normalizedResponse.data);
           } catch (err) {
             console.error('[API] Error in success callback:', err);
           }
@@ -237,9 +250,10 @@ export const useApi = (options = {}) => {
         setError(errorMessage);
       }
       
-      if (typeof onError === 'function') {
+      const errorCallback = callbacksRef.current.onError;
+      if (typeof errorCallback === 'function') {
         try {
-          onError(errorMessage, errorInfo);
+          errorCallback(errorMessage, errorInfo);
         } catch (callbackErr) {
           console.error('[API] Error in error callback:', callbackErr);
         }
@@ -258,14 +272,16 @@ export const useApi = (options = {}) => {
     } finally {
       // Only update loading state if this is still the current request
       if (requestId === requestIdRef.current) {
+        loadingRef.current = false;
         setLoading(false);
       }
     }
-  }, [loading, onSuccess, onError, defaultErrorMessage, logRequests]);
+  }, [defaultErrorMessage, logRequests, skipIfLoading]);
 
   // Reset state
   const reset = useCallback(() => {
     requestIdRef.current++;
+    loadingRef.current = false;
     setData(initialData);
     setError(null);
     setLoading(false);
@@ -279,6 +295,7 @@ export const useApi = (options = {}) => {
   
   const cancel = useCallback(() => {
     requestIdRef.current++;
+    loadingRef.current = false;
     setLoading(false);
     
     if (abortControllerRef.current) {

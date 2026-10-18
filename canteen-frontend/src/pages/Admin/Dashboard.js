@@ -21,7 +21,6 @@ const AdminDashboard = () => {
   const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
-      await new Promise((r) => setTimeout(r, 400));
       const response = await adminAPI.getDashboardStats().catch((err) => {
         throw new Error(`Failed to load dashboard statistics: ${err.message}`);
       });
@@ -57,7 +56,7 @@ const AdminDashboard = () => {
         <SectionHeading kicker="VDart Cafe Overview" title="Good morning" hint="Counting heads, plates and tokens…" />
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-12">
           {['xl:col-span-5', 'xl:col-span-4', 'xl:col-span-3'].map((span, i) => (
-            <div key={i} className={`rounded-5xl border border-stone-200/70 bg-white p-8 shadow-card ${span}`}>
+            <div key={i} className={`rounded-5xl border border-slate-200/70 bg-white p-8 shadow-card ${span}`}>
               <div className="skeleton-shimmer h-10 w-10 rounded-2xl" />
               <div className="skeleton-shimmer mt-5 h-8 w-24 rounded-full" />
               <div className="skeleton-shimmer mt-2 h-3 w-40 rounded-full" />
@@ -96,8 +95,8 @@ const AdminDashboard = () => {
   ];
 
   const shiftRows = [
-    { label: 'Employees', Icon: Users, data: shiftData.employees, tone: 'bg-ember-500' },
-    { label: 'Guests', Icon: User, data: shiftData.guests, tone: 'bg-stone-900' },
+    { label: 'Employees', Icon: Users, data: shiftData.employees, tone: 'bg-cobalt-500' },
+    { label: 'Guests', Icon: User, data: shiftData.guests, tone: 'bg-slate-900' },
   ];
   const maxShift = Math.max(1, shiftData.employees.day, shiftData.employees.mid, shiftData.employees.night, shiftData.guests.day, shiftData.guests.mid, shiftData.guests.night);
   const shiftCols = [
@@ -113,7 +112,7 @@ const AdminDashboard = () => {
         title={`Good day, ${(user?.name || 'Admin').split(' ')[0]}`}
         hint="Heads on seats, dishes live, tokens moving. Everything below updates from the live register."
         right={
-          <button onClick={fetchDashboardData} className="btn-tactile inline-flex items-center gap-1.5 rounded-2xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-bold text-ink-soft shadow-card hover:text-ink">
+          <button onClick={fetchDashboardData} className="btn-tactile inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-ink-soft shadow-card hover:text-ink">
             <RotateCcw className="h-4 w-4" strokeWidth={2} /> Refresh
           </button>
         }
@@ -128,10 +127,10 @@ const AdminDashboard = () => {
             transition={{ ...spring, delay: i * 0.07 }}
             className={c.span}
           >
-            <div className={`relative overflow-hidden rounded-5xl p-7 shadow-card ${c.dark ? 'bg-stone-900 text-cream shadow-diffusion' : 'border border-stone-200/70 bg-white text-ink'}`}>
-              {c.dark && <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-ember-600/25 blur-3xl" />}
+            <div className={`relative overflow-hidden rounded-5xl p-7 shadow-card ${c.dark ? 'bg-cobalt-600 text-white shadow-diffusion' : 'border border-slate-200/70 bg-white text-ink'}`}>
+              {c.dark && <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-cobalt-600/25 blur-3xl" />}
               <div className="flex items-start justify-between">
-                <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${c.dark ? 'bg-white/10 text-amber-200' : 'bg-cream-dark text-ember-700'}`}>
+                <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${c.dark ? 'bg-white/10 text-cobalt-100' : 'bg-paper-dark text-cobalt-700'}`}>
                   <c.Icon className="h-5 w-5" strokeWidth={2} />
                 </span>
                 {c.pulse && (
@@ -140,7 +139,7 @@ const AdminDashboard = () => {
                   </span>
                 )}
               </div>
-              <p className={`mt-5 font-mono-tokens text-5xl font-bold tracking-tight ${c.dark ? 'text-cream' : 'text-ink'}`}>{c.value}</p>
+              <p className={`mt-5 font-mono-tokens text-5xl font-bold tracking-tight ${c.dark ? 'text-white' : 'text-ink'}`}>{c.value}</p>
               {c.dark && c.bars && (
                 <div className="mt-4 flex h-14 items-end gap-2">
                   {[...c.bars, ...c.bars, ...c.bars].slice(0, 14).map((v, bi) => (
@@ -149,7 +148,7 @@ const AdminDashboard = () => {
                       initial={{ scaleY: 0.3 }}
                       animate={{ scaleY: [0.4, 1, 0.55] }}
                       transition={{ duration: 2.4, repeat: Infinity, delay: bi * 0.12, ease: 'easeInOut' }}
-                      className="w-full origin-bottom rounded-full bg-gradient-to-t from-ember-700 to-ember-500"
+                      className="w-full origin-bottom rounded-full bg-gradient-to-t from-cobalt-700 to-cobalt-500"
                       style={{ height: `${28 + ((v + bi * 7) % 72)}%` }}
                     />
                   ))}
@@ -165,10 +164,10 @@ const AdminDashboard = () => {
 
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: 0.21 }} className="md:col-span-2 xl:col-span-12">
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_320px]">
-            <div className="rounded-5xl border border-stone-200/70 bg-white p-7 shadow-card">
+            <div className="rounded-5xl border border-slate-200/70 bg-white p-7 shadow-card">
               <div className="flex items-center justify-between">
                 <h2 className="flex items-center gap-2 text-base font-bold tracking-tight text-ink">
-                  <Flame className="h-5 w-5 text-ember-600" strokeWidth={2} /> Shift-wise plates
+                  <Flame className="h-5 w-5 text-cobalt-600" strokeWidth={2} /> Shift-wise plates
                 </h2>
                 <span className="font-mono-tokens text-xs text-ink-mute">
                   {(shiftData.employees.total + shiftData.guests.total)} heads today
@@ -185,12 +184,12 @@ const AdminDashboard = () => {
                     </div>
                     <div className="grid grid-cols-3 gap-3">
                       {shiftCols.map((sc) => (
-                        <div key={sc.key} className="rounded-2xl bg-cream px-3 py-2.5">
+                        <div key={sc.key} className="rounded-2xl bg-paper px-3 py-2.5">
                           <p className="flex items-center gap-1 font-mono-tokens text-[10px] uppercase tracking-[0.16em] text-ink-mute">
                             <sc.Icon className="h-3 w-3" strokeWidth={2} /> {sc.label}
                           </p>
                           <p className="font-mono-tokens text-lg font-bold text-ink">{row.data[sc.key]}</p>
-                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-stone-200/70">
+                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200/70">
                             <motion.div
                               initial={{ width: 0 }}
                               animate={{ width: `${(row.data[sc.key] / maxShift) * 100}%` }}
@@ -207,16 +206,16 @@ const AdminDashboard = () => {
             </div>
 
             <div className="flex flex-col gap-5">
-              <div className="rounded-5xl bg-stone-900 p-7 text-cream shadow-diffusion">
-                <p className="font-mono-tokens text-[11px] uppercase tracking-[0.2em] text-stone-400">Guest covers</p>
+              <div className="rounded-5xl bg-cobalt-600 p-7 text-white shadow-diffusion">
+                <p className="font-mono-tokens text-[11px] uppercase tracking-[0.2em] text-cobalt-200">Guest covers</p>
                 <p className="mt-1 font-mono-tokens text-5xl font-bold">{stats.guests}</p>
-                <p className="mt-1 text-sm text-stone-400">Day {shiftData.guests.day} · Mid {shiftData.guests.mid} · Night {shiftData.guests.night}</p>
+                <p className="mt-1 text-sm text-cobalt-200">Day {shiftData.guests.day} · Mid {shiftData.guests.mid} · Night {shiftData.guests.night}</p>
               </div>
-              <div className="rounded-5xl border border-stone-200/70 bg-white p-7 shadow-card">
-                <p className="font-mono-tokens text-[11px] uppercase tracking-[0.2em] text-ink-mute">Token flow</p>
-                <p className="mt-1 font-mono-tokens text-2xl font-bold text-ink">Healthy</p>
+              <div className="rounded-5xl border border-slate-200/70 bg-white p-7 shadow-card">
+                <p className="font-mono-tokens text-[11px] uppercase tracking-[0.2em] text-ink-mute">Token wallets</p>
+                <p className="mt-1 font-mono-tokens text-2xl font-bold text-ink">{stats.employees + stats.guests}</p>
                 <p className="mt-1 text-sm leading-relaxed text-ink-mute">Declines auto-refund. Watch pending tickets during peak lunch.</p>
-                {loading && <Loader2 className="mt-3 h-4 w-4 animate-spin text-ember-600" strokeWidth={2} />}
+                {loading && <Loader2 className="mt-3 h-4 w-4 animate-spin text-cobalt-600" strokeWidth={2} />}
               </div>
             </div>
           </div>

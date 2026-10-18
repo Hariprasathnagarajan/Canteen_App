@@ -50,7 +50,7 @@ const MobileBottomNav = memo(function MobileBottomNav() {
   return (
     <nav
       aria-label="Mobile navigation"
-      className="mobile-bottom-nav fixed bottom-0 inset-x-0 z-40 block lg:hidden border-t border-stone-200/80 bg-white/94 backdrop-blur-xl shadow-[0_-4px_24px_rgba(28,25,23,0.06)]"
+      className="mobile-bottom-nav fixed bottom-0 inset-x-0 z-40 block lg:hidden border-t border-slate-200 bg-white/94 backdrop-blur-xl shadow-[0_-4px_24px_rgba(15,23,42,0.06)]"
     >
       <div className="mx-auto flex max-w-md items-center justify-around px-2 pt-1.5 pb-1">
         {tabs.map((tab) => {
@@ -62,7 +62,7 @@ const MobileBottomNav = memo(function MobileBottomNav() {
               key={tab.path}
               to={tab.path}
               className={`touch-pill relative flex flex-1 flex-col items-center justify-center py-1 transition-colors duration-200 ${
-                active ? 'text-ember-700' : 'text-stone-400 hover:text-stone-700 active:text-stone-900'
+                active ? 'text-cobalt-700' : 'text-slate-400 hover:text-slate-700 active:text-slate-900'
               }`}
             >
               <div className="relative flex items-center justify-center">
@@ -70,18 +70,18 @@ const MobileBottomNav = memo(function MobileBottomNav() {
                   <motion.div
                     layoutId="mobile-tab-indicator"
                     transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-                    className="absolute -inset-x-3.5 -inset-y-1 rounded-2xl bg-ember-50 border border-ember-200/70"
+                    className="absolute -inset-x-3.5 -inset-y-1 rounded-2xl bg-cobalt-50 border border-cobalt-200/70"
                   />
                 )}
                 <Icon
                   className={`relative z-10 h-5 w-5 transition-transform duration-200 ${
-                    active ? 'scale-110 text-ember-700 stroke-[2.4]' : 'stroke-[1.8]'
+                    active ? 'scale-110 text-cobalt-700 stroke-[2.4]' : 'stroke-[1.8]'
                   }`}
                 />
               </div>
               <span
                 className={`relative z-10 mt-1 text-[10.5px] tracking-tight transition-all duration-200 ${
-                  active ? 'font-bold text-ember-900' : 'font-medium text-stone-500'
+                  active ? 'font-bold text-cobalt-900' : 'font-medium text-slate-500'
                 }`}
               >
                 {tab.name}
@@ -90,7 +90,7 @@ const MobileBottomNav = memo(function MobileBottomNav() {
                 <motion.span
                   layoutId="mobile-tab-pip"
                   transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                  className="mt-0.5 h-1 w-1 rounded-full bg-ember-600"
+                  className="mt-0.5 h-1 w-1 rounded-full bg-cobalt-600"
                 />
               )}
             </Link>

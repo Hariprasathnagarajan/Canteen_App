@@ -1,5 +1,39 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+dist/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables (NEVER commit secrets)
+.env
 .env.local
+.env.*.local
+
+# Database (local dev only — production uses Render PostgreSQL)
+db.sqlite3
+
+# Build artifacts
+build/
+staticfiles/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Logs
+*.log

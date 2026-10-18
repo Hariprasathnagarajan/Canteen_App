@@ -1,19 +1,15 @@
 import { useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Loader2 } from 'lucide-react';
+import LoadingFallback from './canteen/LoadingFallback';
 import 'react-toastify/dist/ReactToastify.css';
 
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   const { user, loading, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  // While checking authentication, show a loading spinner.
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-ember-600" />
-      </div>
-    );
+  // While checking authentication on cold start with no cached user, show the loader.
+  if (loading && !user) {
+    return <LoadingFallback message="Verifying your canteen pass…" />;
   }
 
   // If not authenticated, redirect to the login page.

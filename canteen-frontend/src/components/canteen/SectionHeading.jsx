@@ -1,11 +1,13 @@
 import { memo } from 'react';
+import { LinkedLineBand } from '../lineart';
 
 const SectionHeading = memo(function SectionHeading({ kicker, title, hint, right }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div className="max-w-[62ch]">
+        <LinkedLineBand className="mb-3 h-8 w-full max-w-[22rem] text-cobalt-500/70" />
         {kicker && (
-          <p className="mb-1.5 font-mono-tokens text-[11px] font-semibold uppercase tracking-[0.18em] text-ember-600">
+          <p className="mb-1.5 font-mono-tokens text-[11px] font-semibold uppercase tracking-[0.18em] text-cobalt-600">
             {kicker}
           </p>
         )}
