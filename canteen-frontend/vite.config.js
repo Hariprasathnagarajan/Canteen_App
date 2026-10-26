@@ -14,6 +14,18 @@ export default defineConfig({
         });
       },
     },
+    {
+      name: 'canteen-order-ws',
+      configureServer(server) {
+        server.ws.on('canteen:order_transaction', (data) => {
+          server.ws.send({
+            type: 'custom',
+            event: 'canteen:order_transaction',
+            data,
+          });
+        });
+      },
+    },
     react(),
   ],
   esbuild: {

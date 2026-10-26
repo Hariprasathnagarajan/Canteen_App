@@ -3,7 +3,7 @@ import { authAPI } from '../utils/api';
 import { Lock, KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
-const PasswordChangeCard = () => {
+const PasswordChangeCard = ({ embedded = false, onCancel, onSuccess }) => {
   const [formData, setFormData] = useState({
     old_password: '',
     new_password: '',
@@ -81,6 +81,7 @@ const PasswordChangeCard = () => {
         new_password: '',
         confirm_password: '',
       });
+      onSuccess?.(message);
     } catch (err) {
       console.error('Password change error:', err);
       const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to update password. Please check your current password.';
@@ -92,8 +93,8 @@ const PasswordChangeCard = () => {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 md:p-8 mt-6 transition-all duration-200">
-      <div className="flex items-center space-x-3 pb-4 mb-6 border-b border-slate-100">
+    <div className={embedded ? '' : 'bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 md:p-8 mt-6 transition-all duration-200'}>
+      <div className={`flex items-center space-x-3 pb-4 mb-6 border-b border-slate-100 ${embedded ? 'hidden' : ''}`}>
           <div className="w-10 h-10 rounded-xl bg-cobalt-50 text-cobalt-700 flex items-center justify-center font-bold">
           <KeyRound className="w-5 h-5" />
         </div>
@@ -223,7 +224,16 @@ const PasswordChangeCard = () => {
           )}
         </div>
 
-        <div className="pt-2">
+        <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+          {embedded && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-full sm:w-auto inline-flex items-center justify-center px-5 py-2.5 rounded-xl font-medium text-sm text-ink-soft bg-slate-100 hover:bg-slate-200 active:scale-[0.98] transition-all"
+            >
+              Cancel
+            </button>
+          )}
           <button
             type="submit"
             disabled={loading || !formData.old_password || !formData.new_password || !isLengthValid || !isMatchValid}

@@ -65,7 +65,7 @@ npm run build
 
 ## 🧪 Automated Testing
 
-Run the full automated test suite (38 test cases across all 7 core modules):
+Run the full automated test suite (146 test cases across all 10 core modules):
 
 ```bash
 python canteen_backend/manage.py test api --verbosity=2

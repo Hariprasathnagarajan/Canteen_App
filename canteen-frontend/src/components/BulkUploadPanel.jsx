@@ -4,7 +4,7 @@ import {
   Download, X, CheckCircle2, AlertTriangle, Loader2
 } from 'lucide-react';
 
-const ACCEPTED_EXTENSIONS = '.csv,.json,.xlsx';
+const ACCEPTED_EXTENSIONS = '.csv,.json,.xlsx,.txt';
 
 const detectFormat = (text) => {
   const trimmed = (text || '').trim();
@@ -14,10 +14,14 @@ const detectFormat = (text) => {
 
 export default function BulkUploadPanel({
   title = 'Bulk Upload',
-  description = 'Upload a CSV, JSON or Excel (.xlsx) file — or paste the rows directly.',
+  description = 'Upload a CSV, JSON, Excel (.xlsx) or TXT file — or paste the rows directly.',
   templateFilename = 'template.csv',
   templateContent = '',
+  templateUrl = '',
+  placeholder = 'name,price,description\nFilter Coffee,15,Fresh filter coffee\n-- OR console dump --\n{disabled: false, name: "Tea", price: "15.00", type: "Tea"}',
   importFn,
+  previewTxtFn,
+  confirmTxtFn,
   onImported,
   onClose,
 }) {
@@ -25,6 +29,7 @@ export default function BulkUploadPanel({
   const [pastedText, setPastedText] = useState('');
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState(null);
+  const [txtPreview, setTxtPreview] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const fileInputRef = useRef(null);
 
@@ -32,11 +37,21 @@ export default function BulkUploadPanel({
     setFile(null);
     setPastedText('');
     setResult(null);
+    setTxtPreview(null);
     setErrorMessage('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleDownloadTemplate = () => {
+    if (templateUrl) {
+      const link = document.createElement('a');
+      link.href = templateUrl;
+      link.setAttribute('download', templateFilename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
     const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -86,8 +101,51 @@ export default function BulkUploadPanel({
       ? { icon: FileType2, label: 'Excel', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
       : file.name.toLowerCase().endsWith('.json')
         ? { icon: FileJson, label: 'JSON', color: 'text-cobalt-700 bg-cobalt-50 border-cobalt-200' }
-        : { icon: FileSpreadsheet, label: 'CSV', color: 'text-sky-700 bg-sky-50 border-sky-200' }
+        : file.name.toLowerCase().endsWith('.txt')
+          ? { icon: FileType2, label: 'TXT Menu', color: 'text-amber-800 bg-amber-50 border-amber-200' }
+          : { icon: FileSpreadsheet, label: 'CSV', color: 'text-sky-700 bg-sky-50 border-sky-200' }
     : null;
+
+  const isTxt = Boolean(
+    (file && file.name.toLowerCase().endsWith('.txt')) ||
+    (pastedText && pastedText.includes('disabled:') && pastedText.includes('price:'))
+  );
+
+  const handlePreviewTxt = async () => {
+    if (!file && !pastedText.trim()) return;
+    setImporting(true);
+    setErrorMessage('');
+    try {
+      const res = await previewTxtFn({ file, text: pastedText });
+      setTxtPreview(res?.data || null);
+    } catch (err) {
+      setErrorMessage(err?.response?.data?.error || 'Failed to preview TXT menu items');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleConfirmTxt = async () => {
+    if (!txtPreview?.items) return;
+    setImporting(true);
+    setErrorMessage('');
+    try {
+      const res = await confirmTxtFn(txtPreview.items);
+      const data = res?.data || {};
+      setResult({
+        created: data.created ?? 0,
+        updated: data.updated ?? 0,
+        total: data.total ?? 0,
+        errors: [],
+      });
+      setTxtPreview(null);
+      if (onImported) onImported(data);
+    } catch (err) {
+      setErrorMessage(err?.response?.data?.error || 'Failed to confirm TXT import');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
     <div className="p-4 mb-4 bg-white border border-slate-200 shadow-sm rounded-xl">
@@ -151,7 +209,7 @@ export default function BulkUploadPanel({
           ) : (
             <>
               <p className="text-sm font-medium text-slate-700">Drop a file here or click to browse</p>
-              <p className="text-[11px] text-slate-400">CSV, JSON or Excel (.xlsx)</p>
+              <p className="text-[11px] text-slate-500">CSV, JSON, Excel (.xlsx) or TXT</p>
             </>
           )}
         </div>
@@ -160,7 +218,7 @@ export default function BulkUploadPanel({
         <div className="flex flex-col">
           <div className="flex items-center gap-1.5 mb-1.5 text-xs font-semibold text-slate-600">
             <ClipboardPaste size={13} />
-            <span>Or paste CSV / JSON rows</span>
+            <span>Or paste CSV, JSON or Console TXT</span>
           </div>
           <textarea
             rows={5}
@@ -169,7 +227,7 @@ export default function BulkUploadPanel({
               setPastedText(e.target.value);
               if (file) setFile(null);
             }}
-            placeholder={'name,price,description\nFilter Coffee,15,Fresh filter coffee'}
+            placeholder={placeholder}
             className="w-full px-3 py-2 font-mono text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-cobalt-500/30 focus:border-cobalt-500 focus:outline-none resize-none"
           />
         </div>
@@ -179,6 +237,51 @@ export default function BulkUploadPanel({
         <div className="flex items-start gap-2 p-3 mt-4 text-xs text-red-800 border rounded-xl bg-red-50 border-red-200">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
           <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {/* TXT Preview Card */}
+      {txtPreview && (
+        <div className="p-3.5 mt-4 border rounded-xl bg-amber-50/70 border-amber-200">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-sm font-bold text-amber-900">
+              TXT Menu Preview ({txtPreview.total_parsed} dishes found: {txtPreview.new_items} new, {txtPreview.updating_items} updates)
+            </div>
+            <button
+              type="button"
+              onClick={() => setTxtPreview(null)}
+              className="text-xs text-amber-800 hover:underline"
+            >
+              Cancel Preview
+            </button>
+          </div>
+          <div className="max-h-48 overflow-y-auto border border-amber-200 rounded-lg bg-white divide-y divide-slate-100 text-xs">
+            {(txtPreview.items || []).map((item, idx) => (
+              <div key={idx} className="flex items-center justify-between p-2 gap-2">
+                <span className="font-semibold text-slate-800 min-w-0 truncate">{item.name}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-slate-500 text-[11px]">{item.category}</span>
+                  <span className="font-bold text-cobalt-700">{item.tokens} tk</span>
+                  <span className={`px-1.5 py-0.5 text-[10px] rounded font-bold ${
+                    item.action === 'create' ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+                  }`}>
+                    {item.action === 'create' ? 'NEW' : 'UPDATE'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 mt-3">
+            <button
+              type="button"
+              onClick={handleConfirmTxt}
+              disabled={importing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              <CheckCircle2 size={14} />
+              <span>{importing ? 'Applying Import...' : `Confirm & Import ${txtPreview.total_parsed} Items`}</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -215,16 +318,29 @@ export default function BulkUploadPanel({
         >
           Clear
         </button>
-        <button
-          type="button"
-          onClick={handleImport}
-          disabled={importing || (!file && !pastedText.trim())}
-          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white rounded-xl bg-cobalt-600 hover:bg-cobalt-700 disabled:opacity-50 transition-colors"
-        >
-          {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-          <span>{importing ? 'Importing…' : 'Import Data'}</span>
-        </button>
+        {isTxt && previewTxtFn && !txtPreview ? (
+          <button
+            type="button"
+            onClick={handlePreviewTxt}
+            disabled={importing || (!file && !pastedText.trim())}
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+          >
+            {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            <span>{importing ? 'Reading TXT...' : 'Preview TXT Menu'}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleImport}
+            disabled={importing || (!file && !pastedText.trim())}
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white rounded-xl bg-cobalt-600 hover:bg-cobalt-700 disabled:opacity-50 transition-colors"
+          >
+            {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            <span>{importing ? 'Importing…' : 'Import Data'}</span>
+          </button>
+        )}
       </div>
     </div>
   );
 }
+

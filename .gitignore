@@ -37,3 +37,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Test & Playwright artifacts
+test-results/
+playwright-report/
+canteen-frontend/test-results/
+canteen-frontend/playwright-report/

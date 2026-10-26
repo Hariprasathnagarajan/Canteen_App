@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { authAPI, ensureCSRFToken } from '../utils/api';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -283,7 +283,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Memoize the context value to prevent unnecessary re-renders
-  const contextValue = {
+  const contextValue = useMemo(() => ({
     user,
     setUser,
     updateUser,
@@ -294,7 +294,7 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     checkAuth,
-  };
+  }), [user, isAuthenticated, loading, error, login, logout, checkAuth, updateUser, updatePassword]);
 
   return (
     <AuthContext.Provider value={contextValue}>

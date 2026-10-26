@@ -34,7 +34,6 @@ export const api = axios.create({
     xsrfCookieName: CSRF_COOKIE_NAME,
   xsrfHeaderName: 'X-CSRFToken',
   headers: {
-    'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
   },
 });
@@ -215,8 +214,6 @@ export const authAPI = {
       'X-Requested-With': 'XMLHttpRequest',
     },
   }),
-
-  checkPasswordResetStatus: (identifier) => api.get(`/password_reset/status/?identifier=${encodeURIComponent(identifier)}`),
 };
 
 // Employee API
@@ -224,6 +221,7 @@ export const employeeAPI = {
   getMenu: () => api.get('/employee/menu/'),
   placeOrder: (orderData) => api.post('/employee/order/', orderData),
   getOrders: () => api.get('/employee/orders/'),
+  cancelOrder: (orderId, reason = 'Cancelled by user') => api.post(`/orders/${orderId}/cancel/`, { reason }),
   getOrderReceipt: (orderId) => api.get(`/orders/${orderId}/receipt/`),
   getProfile: () => api.get('/profile/'),
 };
@@ -233,6 +231,7 @@ export const guestAPI = {
   getMenu: () => api.get('/guest/menu/'),
   placeOrder: (orderData) => api.post('/guest/order/', orderData),
   getOrders: () => api.get('/guest/orders/'),
+  cancelOrder: (orderId, reason = 'Cancelled by user') => api.post(`/orders/${orderId}/cancel/`, { reason }),
   getOrderReceipt: (orderId) => api.get(`/orders/${orderId}/receipt/`),
   getProfile: () => api.get('/profile/'),
 };
@@ -258,6 +257,15 @@ export const staffAPI = {
     const response = await api.post('/staff/menu/bulk-import/', buildBulkPayload({ file, text, format }));
     return response;
   },
+  previewTxtImport: async ({ file = null, text = '' } = {}) => {
+    const payload = file ? (() => { const fd = new FormData(); fd.append('file', file); return fd; })() : { text };
+    const response = await api.post('/staff/menu/preview-txt-import/', payload);
+    return response;
+  },
+  confirmTxtImport: async (items) => {
+    const response = await api.post('/staff/menu/confirm-txt-import/', { items });
+    return response;
+  },
   getOrders: (params = '') => {
     if (typeof params === 'string') {
       return api.get(`/staff/orders/${params ? `?search=${encodeURIComponent(params)}` : ''}`);
@@ -274,10 +282,28 @@ export const staffAPI = {
   getOrderReceipt: (orderId) => api.get(`/orders/${orderId}/receipt/`),
   updateOrderStatus: (orderId, status) =>
     api.patch(`/staff/orders/${orderId}/update_status/`, { status }),
+  cancelOrder: (orderId, reason = 'Cancelled by staff') => api.post(`/orders/${orderId}/cancel/`, { reason }),
 };
 
 // Admin API
 export const adminAPI = {
+  // Office & Kitchen Management
+  getOffices: async (params = {}) => {
+    return await api.get('/admin/offices/', { params });
+  },
+  createOffice: async (data) => {
+    return await api.post('/admin/offices/', data);
+  },
+  updateOffice: async (id, data) => {
+    return await api.patch(`/admin/offices/${id}/`, data);
+  },
+  deleteOffice: async (id) => {
+    return await api.delete(`/admin/offices/${id}/`);
+  },
+  getKitchens: async (params = {}) => {
+    return await api.get('/admin/kitchens/', { params });
+  },
+
   // User Management
   getUsers: async () => {
     const response = await api.get('/admin/users/');
@@ -296,6 +322,16 @@ export const adminAPI = {
   
   deleteUser: async (userId) => {
     const response = await api.delete(`/admin/users/${userId}/`);
+    return response;
+  },
+
+  getDeletedUsers: async () => {
+    const response = await api.get('/admin/users/', { params: { status: 'deleted' } });
+    return response;
+  },
+
+  restoreUser: async (userId) => {
+    const response = await api.post(`/admin/users/${userId}/restore/`);
     return response;
   },
   
@@ -361,10 +397,68 @@ export const adminAPI = {
     }
   },
 
+  getUserTokenTransactions: async (userId) => {
+    try {
+      return await api.get(`/admin/tokens/user-transactions/${userId}/`);
+    } catch (error) {
+      console.error(`[API] Error in getUserTokenTransactions for ${userId}:`, error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getTokenResetApprovalStatus: async () => {
+    try {
+      return await api.get('/admin/tokens/reset-approval-status/');
+    } catch (error) {
+      console.error('[API] Error in getTokenResetApprovalStatus:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  approveTokenReset: async (data = {}) => {
+    try {
+      return await api.post('/admin/tokens/approve-reset/', data);
+    } catch (error) {
+      console.error('[API] Error in approveTokenReset:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  rejectTokenReset: async (data = {}) => {
+    try {
+      return await api.post('/admin/tokens/reject-reset/', data);
+    } catch (error) {
+      console.error('[API] Error in rejectTokenReset:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  setAllocationMode: async (mode) => {
+    try {
+      return await api.post('/admin/tokens/mode/', { mode });
+    } catch (error) {
+      console.error('[API] Error in setAllocationMode:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getAllocationHistory: async (params = {}) => {
+    try {
+      return await api.get('/admin/tokens/history/', { params });
+    } catch (error) {
+      console.error('[API] Error in getAllocationHistory:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
   bulkImportUsers: async ({ file = null, text = '', format = '' } = {}) => {
     const response = await api.post('/admin/users/bulk-import/', buildBulkPayload({ file, text, format }));
     return response;
   },
+
+  // Settings
+  getSettings: () => api.get('/admin/settings/'),
+  updateSettings: (data) => api.patch('/admin/settings/', data),
 
   // Dashboard endpoint
   getDashboardStats: async () => {
@@ -375,6 +469,135 @@ export const adminAPI = {
       throw error;
     }
   },
+
+  getRevenueData: async (period = 'week') => {
+    try {
+      return await api.get(`/admin/dashboard/revenue/?period=${period}`);
+    } catch (error) {
+      console.error('Error in getRevenueData:', error.response?.status, error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getCycleRevenueData: async (date = null) => {
+    try {
+      return await api.get(`/admin/dashboard/cycle-revenue/${date ? `?date=${encodeURIComponent(date)}` : ''}`);
+    } catch (error) {
+      console.error('Error in getCycleRevenueData:', error.response?.status, error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getRecentOrders: async (limit = 10) => {
+    try {
+      return await api.get(`/admin/dashboard/orders/recent/?limit=${limit}`);
+    } catch (error) {
+      console.error('Error in getRecentOrders:', error.response?.status, error.response?.data || error.message);
+      throw error;
+    }
+  },
+};
+
+// Staff Admin API (Cafeteria Transactions Only)
+export const staffAdminAPI = {
+  getDashboard: async (limit = 50) => {
+    try {
+      return await api.get(`/staff-admin/dashboard/?limit=${limit}`);
+    } catch (error) {
+      console.error('Error in staffAdminAPI.getDashboard:', error.response?.status, error.response?.data || error.message);
+      throw error;
+    }
+  },
+};
+
+// Financial Ledger & Billing API
+export const financeAPI = {
+  getTransactions: (params = {}) => api.get('/finance/transactions/', { params }),
+  createTransaction: (data) => api.post('/finance/transactions/', data),
+  getSummary: () => api.get('/finance/transactions/summary/'),
+  getBills: () => api.get('/finance/company-bills/'),
+  generateBill: (data) => api.post('/finance/company-bills/generate/', data),
+  recordPayment: (billId, data) => api.post(`/finance/company-bills/${billId}/record-payment/`, data),
+};
+
+// Corporate Audit Reporting API
+export const reportsAPI = {
+  getAuditExportUrl: (year, month, format = 'csv') =>
+    `${API_BASE_URL}/reports/audit-export/?year=${year}&month=${month}&format=${format}`,
+
+  downloadAuditExport: (yearOrParams, maybeMonth, format = 'csv') => {
+    let params = {};
+    if (typeof yearOrParams === 'object' && yearOrParams !== null) {
+      params = { ...yearOrParams };
+    } else {
+      params = { year: yearOrParams, month: maybeMonth, format };
+    }
+    const fmt = (params.format || 'csv').toLowerCase();
+    return api.get('/reports/audit-export/', {
+      params,
+      responseType: fmt === 'json' ? 'json' : 'blob',
+    });
+  },
+
+  getMonthlyReportData: async (params = {}) => {
+    try {
+      return await api.get('/reports/audit-export/', {
+        params: { ...params, format: 'json' }
+      });
+    } catch (error) {
+      console.error('Error fetching monthly report data:', error.response?.status, error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  downloadReportFile: async ({ year, month, start_date, end_date, cycle, format = 'csv', report_type = 'all' } = {}) => {
+    const now = new Date();
+    const targetYear = year || now.getFullYear();
+    const targetMonth = month || (now.getMonth() + 1);
+    const targetFormat = (format || 'csv').toLowerCase();
+
+    const response = await reportsAPI.downloadAuditExport({
+      year: targetYear,
+      month: targetMonth,
+      start_date,
+      end_date,
+      cycle,
+      format: targetFormat,
+      report_type,
+    });
+
+    const mimeTypes = {
+      csv: 'text/csv;charset=utf-8;',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      pdf: 'application/pdf',
+      json: 'application/json',
+    };
+
+    const blob = response.data instanceof Blob 
+      ? response.data 
+      : new Blob([targetFormat === 'json' ? JSON.stringify(response.data, null, 2) : response.data], {
+          type: mimeTypes[targetFormat] || 'application/octet-stream',
+        });
+
+    let prefix = 'VDart_Monthly_Report';
+    if (report_type === 'transactions') prefix = 'VDart_Total_Transactions';
+    if (report_type === 'allocations') prefix = 'VDart_Token_Allocations';
+
+    const rangeSuffix = start_date && end_date
+      ? `${start_date}_to_${end_date}`
+      : `${targetYear}_${String(targetMonth).padStart(2, '0')}`;
+
+    const filename = `${prefix}_${rangeSuffix}.${targetFormat}`;
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  },
 };
 
 export default api;
+

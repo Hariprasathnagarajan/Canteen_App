@@ -37,9 +37,15 @@ export default {
         },
         leaf: {
           50: '#ECFDF5',
+          100: '#D1FAE5',
+          200: '#A7F3D0',
+          300: '#6EE7B7',
+          400: '#34D399',
           500: '#10B981',
           600: '#059669',
           700: '#047857',
+          800: '#065F46',
+          900: '#064E3B',
         },
         primary: {
           DEFAULT: '#0048BB',
@@ -58,10 +64,20 @@ export default {
         secondary: '#64748B',
       },
       boxShadow: {
+        '2xs': '0 1px 2px 0 rgba(15, 23, 42, 0.05)',
         diffusion: '0 20px 40px -15px rgba(15, 23, 42, 0.08)',
         card: '0 10px 25px -5px rgba(15, 23, 42, 0.06), 0 8px 10px -6px rgba(15, 23, 42, 0.03)',
         dock: '0 24px 48px -12px rgba(15, 23, 42, 0.24)',
         cobalt: '0 12px 24px -8px rgba(0, 72, 187, 0.32)',
+      },
+      spacing: {
+        4.5: '1.125rem',
+      },
+      gridTemplateColumns: {
+        15: 'repeat(15, minmax(0, 1fr))',
+      },
+      backdropBlur: {
+        xs: '2px',
       },
       borderRadius: {
         '4xl': '2rem',
@@ -97,6 +113,14 @@ export default {
           '0%': { strokeDashoffset: 'var(--dash, 400)' },
           '100%': { strokeDashoffset: '0' },
         },
+        modalIn: {
+          '0%': { opacity: '0', transform: 'scale(0.95) translateY(12px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+        },
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
       },
       animation: {
         shimmer: 'shimmer 1.6s linear infinite',
@@ -106,6 +130,8 @@ export default {
         fadeUp: 'fadeUp 0.5s cubic-bezier(0.16,1,0.3,1) both',
         steam: 'steam 2.4s ease-out infinite',
         drawLine: 'drawLine 1.6s cubic-bezier(0.16,1,0.3,1) both',
+        modalIn: 'modalIn 0.25s cubic-bezier(0.16,1,0.3,1) both',
+        fadeIn: 'fadeIn 0.2s ease-out both',
       },
     },
   },

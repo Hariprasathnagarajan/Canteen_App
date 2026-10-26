@@ -156,22 +156,22 @@
 
   .field-label {
     display: block;
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: #64748B;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.25rem;
   }
 
   .field-input {
     display: block;
     width: 100%;
-    border-radius: 1rem;
+    border-radius: 0.75rem;
     border: 1px solid #E2E8F0;
-    background: rgba(255, 255, 255, 0.9);
-    padding: 0.7rem 1rem;
-    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
     color: #0F172A;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }

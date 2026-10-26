@@ -28,11 +28,12 @@ urlpatterns = [
     # Django Admin
     path('admin/', admin.site.urls),
     
-    # Primary API routes
+    # Primary API routes.
+    # The API is registered ONCE. It used to be registered a second time at the
+    # root as a "fallback", which exposed every endpoint (including the
+    # anonymous password-reset views) at two paths and doubled the attack
+    # surface. The frontend always uses the /api prefix.
     path('api/', include('api.urls')),
-    
-    # Direct fallback routing: allows endpoints to be called with or without /api/ prefix
-    path('', include('api.urls')),
 ]
 
 if settings.DEBUG:

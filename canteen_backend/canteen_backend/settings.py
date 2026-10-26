@@ -1,19 +1,30 @@
 import os
+import sys
 from pathlib import Path
 from decouple import config
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-canteen-app-production-secret-key-change-me')
 DEBUG = config('DEBUG', default=True, cast=bool)
 
+if not DEBUG and SECRET_KEY == 'django-insecure-canteen-app-production-secret-key-change-me':
+    raise ImproperlyConfigured(
+        "A secure, unique SECRET_KEY environment variable is mandatory when running in production (DEBUG=False)."
+    )
+
+
 # Hosts configuration
 allowed_hosts_env = config(
     'ALLOWED_HOSTS',
-    default='localhost,127.0.0.1,0.0.0.0,canteen-app-l261.onrender.com,.onrender.com'
+    default='localhost,127.0.0.1,0.0.0.0,testserver,canteen-app-l261.onrender.com,.onrender.com'
 )
 ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
+for default_host in ['localhost', '127.0.0.1', '0.0.0.0', 'testserver']:
+    if default_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(default_host)
 
 # Render proxy support: Render terminates SSL and forwards via HTTP with X-Forwarded-Proto: https
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -87,7 +98,11 @@ for wildcard_trusted in ['https://vcafe.netlify.app', 'https://canteen-app-l261.
 # Cookie & Session settings for cross-site requests (Netlify <-> Render)
 # When deployed across domains (e.g. netlify.app -> onrender.com) over HTTPS,
 # SameSite must be 'None' and Secure must be True.
-IS_PRODUCTION = config('ENVIRONMENT', default='development').lower() == 'production' or not DEBUG
+# In local development over HTTP, cookies cannot be Secure=True with SameSite=None,
+# otherwise browsers reject them.
+IS_LOCAL_DEV = ('runserver' in sys.argv) or ('test' in sys.argv)
+
+IS_PRODUCTION = (config('ENVIRONMENT', default='development').lower() == 'production' or not DEBUG) and not IS_LOCAL_DEV
 
 # Namespaced cookie names: local dev shares the `localhost` domain namespace
 # with every other app the developer runs, so generic `sessionid`/`csrftoken`
@@ -98,16 +113,16 @@ SESSION_COOKIE_AGE = 1209600  # 2 weeks
 SESSION_COOKIE_DOMAIN = config('SESSION_COOKIE_DOMAIN', default=None)
 SESSION_COOKIE_PATH = '/'
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=IS_PRODUCTION, cast=bool)
-SESSION_COOKIE_SAMESITE = 'None' if SESSION_COOKIE_SECURE else 'Lax'
+SESSION_COOKIE_SECURE = False if IS_LOCAL_DEV else config('SESSION_COOKIE_SECURE', default=IS_PRODUCTION, cast=bool)
+SESSION_COOKIE_SAMESITE = 'Lax' if (IS_LOCAL_DEV or not SESSION_COOKIE_SECURE) else 'None'
 
 CSRF_COOKIE_NAME = config('CSRF_COOKIE_NAME', default='vcafe_csrftoken')
 CSRF_COOKIE_AGE = 31449600  # 1 year
 CSRF_COOKIE_DOMAIN = config('CSRF_COOKIE_DOMAIN', default=None)
 CSRF_COOKIE_PATH = '/'
 CSRF_COOKIE_HTTPONLY = False  # Frontend needs to read csrftoken for X-CSRFToken header
-CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=IS_PRODUCTION, cast=bool)
-CSRF_COOKIE_SAMESITE = 'None' if CSRF_COOKIE_SECURE else 'Lax'
+CSRF_COOKIE_SECURE = False if IS_LOCAL_DEV else config('CSRF_COOKIE_SECURE', default=IS_PRODUCTION, cast=bool)
+CSRF_COOKIE_SAMESITE = 'Lax' if (IS_LOCAL_DEV or not CSRF_COOKIE_SECURE) else 'None'
 CSRF_USE_SESSIONS = False
 
 TEMPLATES = [
@@ -146,6 +161,24 @@ else:
 
 AUTH_USER_MODEL = 'api.CustomUser'
 
+# Password strength rules for newly-set passwords. Existing accounts are
+# unaffected: set_password() does not validate, only validate_password() does.
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 8},
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
@@ -153,6 +186,15 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '120/minute',
+        'user': '300/minute',
+        'auth_attempt': '10/minute',
+    },
 }
 
 LANGUAGE_CODE = 'en-us'
@@ -163,7 +205,17 @@ USE_TZ = True
 # Static files & Media (with WhiteNoise for production)
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Django 5.1+ configures static file storage via STORAGES; the legacy
+# STATICFILES_STORAGE setting was removed and silently had no effect.
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

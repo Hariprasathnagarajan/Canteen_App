@@ -1,11 +1,13 @@
 import { Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ProfileModalProvider, useProfileModal } from './context/ProfileModalContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import MobileBottomNav from './components/MobileBottomNav';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingFallback from './components/canteen/LoadingFallback';
+import ProfileModal from './components/canteen/ProfileModal';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { getDefaultRoute } from './utils/routes';
@@ -17,19 +19,16 @@ import NotFound from './pages/NotFound';
 
 import EmployeeMenu from './pages/Employee/Menu';
 import EmployeeOrders from './pages/Employee/Orders';
-import EmployeeProfile from './pages/Employee/Profile';
 
 import GuestMenu from './pages/Guest/Menu';
 import GuestOrders from './pages/Guest/Orders';
-import GuestProfile from './pages/Guest/Profile';
 
 import StaffOrders from './pages/Staff/Orders';
 import StaffMenu from './pages/Staff/Menu';
-import StaffProfile from './pages/Staff/Profile';
+import StaffAdminDashboard from './pages/Staff/StaffAdminDashboard';
 
 import AdminUsers from './pages/Admin/Users';
 import AdminTokens from './pages/Admin/Tokens';
-import AdminProfile from './pages/Admin/Profile';
 import AdminDashboard from './pages/Admin/Dashboard';
 
 const PAGE_TITLES = {
@@ -38,17 +37,14 @@ const PAGE_TITLES = {
   '/unauthorized': 'Access Denied | VDart Cafe',
   '/employee/menu': "Today's Menu | VDart Cafe",
   '/employee/orders': 'My Orders | VDart Cafe',
-  '/employee/profile': 'Employee Profile | VDart Cafe',
   '/guest/menu': 'Guest Menu | VDart Cafe',
   '/guest/orders': 'Guest Orders | VDart Cafe',
-  '/guest/profile': 'Guest Profile | VDart Cafe',
   '/staff/orders': 'Kitchen Orders | VDart Cafe',
   '/staff/menu': 'Menu Management | VDart Cafe',
-  '/staff/profile': 'Staff Profile | VDart Cafe',
+  '/staff-admin/dashboard': 'Cafeteria Transactions | VDart Cafe',
   '/admin/dashboard': 'Admin Dashboard | VDart Cafe',
   '/admin/users': 'User Management | VDart Cafe',
   '/admin/tokens': 'Token Allocations | VDart Cafe',
-  '/admin/profile': 'Admin Profile | VDart Cafe',
 };
 
 const PageTitle = () => {
@@ -61,16 +57,18 @@ const PageTitle = () => {
 
 const Layout = ({ children }) => {
   const { isAuthenticated } = useAuth();
+  const { open, closeProfile } = useProfileModal();
   return (
     <div className="min-h-[100dvh] bg-paper text-ink">
       <div className="grain-overlay" />
       {isAuthenticated && <Navbar />}
-      <main className="pb-28 pt-4 sm:pt-5 lg:pb-16">
-        <div className="mx-auto w-full max-w-[1400px] px-3.5 sm:px-6 lg:px-8">
+      <main className="pb-16 pt-2 sm:pt-3 lg:pb-12">
+        <div className="mx-auto w-full max-w-[1200px] px-2.5 sm:px-4 lg:px-6">
           {children}
         </div>
       </main>
       {isAuthenticated && <MobileBottomNav />}
+      {isAuthenticated && <ProfileModal isOpen={open} onClose={closeProfile} />}
     </div>
   );
 };
@@ -87,6 +85,7 @@ const App = () => {
     <ErrorBoundary>
       <Router>
         <AuthProvider>
+          <ProfileModalProvider>
           <Suspense fallback={<LoadingFallback message="Plating up…" />}>
             <PageTitle />
             <ToastContainer
@@ -116,11 +115,6 @@ const App = () => {
                   <Layout><EmployeeOrders /></Layout>
                 </ProtectedRoute>
               } />
-              <Route path="/employee/profile" element={
-                <ProtectedRoute allowedRoles={['employee']}>
-                  <Layout><EmployeeProfile /></Layout>
-                </ProtectedRoute>
-              } />
               <Route path="/guest/menu" element={
                 <ProtectedRoute allowedRoles={['guest']}>
                   <Layout><GuestMenu /></Layout>
@@ -131,25 +125,26 @@ const App = () => {
                   <Layout><GuestOrders /></Layout>
                 </ProtectedRoute>
               } />
-              <Route path="/guest/profile" element={
-                <ProtectedRoute allowedRoles={['guest']}>
-                  <Layout><GuestProfile /></Layout>
-                </ProtectedRoute>
-              } />
 
               <Route path="/staff/orders" element={
-                <ProtectedRoute allowedRoles={['staff', 'admin']}>
+                <ProtectedRoute allowedRoles={['staff', 'staff_admin', 'admin']}>
                   <Layout><StaffOrders /></Layout>
                 </ProtectedRoute>
               } />
               <Route path="/staff/menu" element={
-                <ProtectedRoute allowedRoles={['staff', 'admin']}>
+                <ProtectedRoute allowedRoles={['staff', 'staff_admin', 'admin']}>
                   <Layout><StaffMenu /></Layout>
                 </ProtectedRoute>
               } />
-              <Route path="/staff/profile" element={
-                <ProtectedRoute allowedRoles={['staff', 'admin']}>
-                  <Layout><StaffProfile /></Layout>
+
+              <Route path="/staff-admin" element={
+                <ProtectedRoute allowedRoles={['staff_admin', 'admin']}>
+                  <Navigate to="/staff-admin/dashboard" replace />
+                </ProtectedRoute>
+              } />
+              <Route path="/staff-admin/dashboard" element={
+                <ProtectedRoute allowedRoles={['staff_admin', 'admin']}>
+                  <Layout><StaffAdminDashboard /></Layout>
                 </ProtectedRoute>
               } />
 
@@ -164,18 +159,13 @@ const App = () => {
                 </ProtectedRoute>
               } />
               <Route path="/admin/users" element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['admin', 'staff_admin']}>
                   <Layout><AdminUsers /></Layout>
                 </ProtectedRoute>
               } />
               <Route path="/admin/tokens" element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <Layout><AdminTokens /></Layout>
-                </ProtectedRoute>
-              } />
-              <Route path="/admin/profile" element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <Layout><AdminProfile /></Layout>
                 </ProtectedRoute>
               } />
 
@@ -188,7 +178,8 @@ const App = () => {
               } />
           </Routes>
         </Suspense>
-      </AuthProvider>
+          </ProfileModalProvider>
+        </AuthProvider>
     </Router>
   </ErrorBoundary>
   );
