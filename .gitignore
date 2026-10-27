@@ -20,8 +20,6 @@ env/
 .env.local
 .env.*.local
 
-# Database (local dev only — production uses Render PostgreSQL)
-db.sqlite3
 
 # Build artifacts
 build/
