@@ -34,10 +34,10 @@ export default class ErrorBoundary extends React.Component {
 
           <div className="max-w-md space-y-2">
             <p className="font-mono-tokens text-[11px] font-bold uppercase tracking-[0.22em] text-cobalt-600">
-              Kitchen Hiccup
+              Unexpected Error
             </p>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">
-              Something went off the pass
+              Something went wrong
             </h1>
             <p className="text-sm text-ink-mute leading-relaxed">
               We hit an unexpected snag loading this screen. Don't worry, your orders and token balance remain safe.

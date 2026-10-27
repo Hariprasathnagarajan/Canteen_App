@@ -40,7 +40,7 @@ export default function MyOrdersExperience({ api }) {
   useEffect(() => {
     const unsubscribe = subscribeToOrderUpdates((event) => {
       if (event?.action === 'order_accepted') {
-        toast.success(`🎉 Kitchen accepted your order #${event.data?.orderId || ''}!`, { icon: '🍽️' });
+        toast.success(`🎉 Order #${event.data?.orderId || ''} accepted!`, { icon: '🍽️' });
         fetchOrders(true);
       } else if (event?.action === 'order_created' || event?.action === 'order_declined' || event?.action === 'status_changed') {
         fetchOrders(true);
@@ -88,7 +88,7 @@ export default function MyOrdersExperience({ api }) {
             <span>My Orders</span>
             {activeOrdersCount > 0 && (
               <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-900 border border-emerald-300">
-                {activeOrdersCount} in kitchen
+                {activeOrdersCount} active
               </span>
             )}
           </h1>
@@ -155,8 +155,6 @@ export default function MyOrdersExperience({ api }) {
           </div>
         ) : (
           <EmptyState
-            icon={Package}
-            art="tray"
             title="No orders placed today"
             hint="Order from today's menu to enjoy freshly cooked meals."
           />
@@ -176,10 +174,8 @@ export default function MyOrdersExperience({ api }) {
           </div>
         ) : (
           <EmptyState
-            icon={Clock}
-            art="receipt"
-            title="No previous orders"
-            hint="Your past order history will be shown here."
+            title="No past orders"
+            hint="Your completed orders will appear here."
           />
         )
       )}

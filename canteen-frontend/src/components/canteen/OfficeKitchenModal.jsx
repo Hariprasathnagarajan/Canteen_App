@@ -2,17 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Building2, 
-  UtensilsCrossed, 
-  MapPin, 
   Plus, 
   Edit2, 
-  Trash2, 
   CheckCircle2, 
-  AlertCircle, 
   Loader2, 
   X, 
-  Users, 
-  ChefHat, 
   Save, 
   RefreshCw 
 } from 'lucide-react';
@@ -30,7 +24,6 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    location: '',
   });
 
   const loadOffices = useCallback(async () => {
@@ -56,7 +49,7 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
   }, [isOpen, loadOffices]);
 
   const resetForm = () => {
-    setFormData({ name: '', code: '', location: '' });
+    setFormData({ name: '', code: '' });
     setShowAddForm(false);
     setEditingOffice(null);
   };
@@ -66,7 +59,6 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
     setFormData({
       name: office.name,
       code: office.code,
-      location: office.location || '',
     });
     setShowAddForm(true);
   };
@@ -84,16 +76,14 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
         await adminAPI.updateOffice(editingOffice.id, {
           name: formData.name.trim(),
           code: formData.code.trim().toUpperCase(),
-          location: formData.location.trim(),
         });
         toast.success(`Office "${formData.name}" updated successfully.`);
       } else {
         await adminAPI.createOffice({
           name: formData.name.trim(),
           code: formData.code.trim().toUpperCase(),
-          location: formData.location.trim(),
         });
-        toast.success(`Office "${formData.name}" and paired Kitchen created!`);
+        toast.success(`Office "${formData.name}" created!`);
       }
       resetForm();
       loadOffices();
@@ -125,8 +115,8 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Office Locations & Kitchens"
-      subtitle="Manage corporate office branches. When an office is created, its dedicated kitchen is automatically generated."
+      title="Office Locations"
+      subtitle="Manage office branches."
       maxWidth="max-w-3xl"
     >
       <div className="space-y-4">
@@ -136,10 +126,7 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cobalt-50 text-cobalt-700">
               <Building2 className="h-4 w-4" />
             </span>
-            <div>
-              <p className="text-xs font-bold text-ink">Total Locations: {offices.length}</p>
-              <p className="text-[11px] text-ink-mute">1-to-1 Kitchen binding active</p>
-            </div>
+            <p className="text-xs font-bold text-ink">Total Locations: {offices.length}</p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -181,12 +168,9 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
                   <Building2 className="h-3.5 w-3.5 text-cobalt-700" />
                   {editingOffice ? `Edit Office: ${editingOffice.name}` : 'Create New Office Location'}
                 </h4>
-                <span className="text-[10px] font-mono font-medium text-cobalt-700 bg-cobalt-100/80 px-2 py-0.5 rounded-full">
-                  Auto-creates Kitchen
-                </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
                     Office Name <span className="text-rose-500">*</span>
@@ -215,19 +199,6 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
                     className="w-full px-3 py-1.5 text-xs font-mono font-bold uppercase bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-cobalt-500 focus:outline-none"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Address / Building Details
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. IT Park, Phase 2, Floor 3"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-cobalt-500 focus:outline-none"
-                  />
-                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-1">
@@ -244,14 +215,14 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-cobalt-600 hover:bg-cobalt-700 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-50"
                 >
                   {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  <span>{editingOffice ? 'Save Changes' : 'Create Office & Kitchen'}</span>
+                  <span>{editingOffice ? 'Save Changes' : 'Create Office'}</span>
                 </button>
               </div>
             </motion.form>
           )}
         </AnimatePresence>
 
-        {/* Office & Kitchen Cards Grid */}
+        {/* Office Cards Grid */}
         {loading ? (
           <div className="py-12 flex flex-col items-center justify-center gap-2">
             <Loader2 className="h-6 w-6 animate-spin text-cobalt-600" />
@@ -278,20 +249,14 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cobalt-600 text-white font-bold text-xs shadow-sm">
                       {office.code}
                     </span>
-                    <div>
-                      <h4 className="text-sm font-bold text-ink leading-tight flex items-center gap-1.5">
-                        {office.name}
-                        {!office.is_active && (
-                          <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded">
-                            Inactive
-                          </span>
-                        )}
-                      </h4>
-                      <p className="text-[11px] text-ink-mute flex items-center gap-1 mt-0.5">
-                        <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
-                        <span className="truncate max-w-[180px]">{office.location || 'Location details not specified'}</span>
-                      </p>
-                    </div>
+                    <h4 className="text-sm font-bold text-ink leading-tight flex items-center gap-1.5">
+                      {office.name}
+                      {!office.is_active && (
+                        <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded">
+                          Inactive
+                        </span>
+                      )}
+                    </h4>
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -318,34 +283,6 @@ export default function OfficeKitchenModal({ isOpen, onClose, onOfficeUpdated })
                   </div>
                 </div>
 
-                {/* Paired Kitchen Banner */}
-                <div className="rounded-xl border border-leaf-600/20 bg-leaf-50/60 p-2.5 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <UtensilsCrossed className="h-4 w-4 text-leaf-700 shrink-0" />
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-leaf-800 block">
-                        Paired Kitchen
-                      </span>
-                      <span className="font-semibold text-leaf-950 text-xs">
-                        {office.kitchen_name || `${office.name} Kitchen`}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-leaf-800 bg-leaf-100/80 px-2 py-0.5 rounded-full">
-                    {office.menu_item_count ?? 0} dishes
-                  </span>
-                </div>
-
-                {/* Office Metrics Footer */}
-                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-                  <span className="flex items-center gap-1">
-                    <Users className="h-3 w-3 text-slate-400" />
-                    <strong>{office.user_count ?? 0}</strong> assigned diners
-                  </span>
-                  <span className="font-mono text-[10px] text-slate-400">
-                    ID #{office.id}
-                  </span>
-                </div>
               </div>
             ))}
           </div>

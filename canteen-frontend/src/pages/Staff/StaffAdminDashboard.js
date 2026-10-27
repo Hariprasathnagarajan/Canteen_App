@@ -12,13 +12,16 @@ import {
   CheckCircle2, 
   XCircle, 
   AlertCircle, 
-  ChefHat, 
+  ClipboardList,
   Coffee, 
   Download,
   Calendar,
   Layers,
   Sparkles,
-  Users
+  Users,
+  FileSpreadsheet,
+  FileText,
+  Loader2
 } from 'lucide-react';
 import { staffAdminAPI, reportsAPI } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
@@ -27,6 +30,7 @@ import SectionHeading from '../../components/canteen/SectionHeading';
 import ReceiptModal from '../../components/canteen/ReceiptModal';
 import VegBadge from '../../components/canteen/VegBadge';
 import DateRangePicker from '../../components/canteen/DateRangePicker';
+import Modal from '../../components/Modal';
 
 const spring = { type: 'spring', stiffness: 120, damping: 20 };
 
@@ -40,6 +44,9 @@ const StaffAdminDashboard = () => {
   const [selectedReceiptOrder, setSelectedReceiptOrder] = useState(null);
   const [exporting, setExporting] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState('xlsx');
+  const [exportReportType, setExportReportType] = useState('transactions');
   const [exportRange, setExportRange] = useState({ startDate: '', endDate: '' });
 
   const fetchDashboardData = useCallback(async () => {
@@ -58,7 +65,7 @@ const StaffAdminDashboard = () => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
-  const handleExportTransactions = async (format = 'xlsx') => {
+  const handleExportTransactions = async (format = exportFormat, reportType = exportReportType) => {
     if (exportRange.startDate && exportRange.endDate && exportRange.startDate > exportRange.endDate) {
       toast.error('The "From" date must be on or before the "To" date.');
       return;
@@ -68,12 +75,13 @@ const StaffAdminDashboard = () => {
       const hasRange = exportRange.startDate && exportRange.endDate;
       await reportsAPI.downloadReportFile({
         format,
-        report_type: 'transactions',
+        report_type: reportType,
         cycle: hasRange ? undefined : 'current',
         start_date: exportRange.startDate || undefined,
         end_date: exportRange.endDate || undefined,
       });
-      toast.success(`Cafeteria transactions exported successfully (${format.toUpperCase()})!`);
+      toast.success(`Audit report exported successfully (${format.toUpperCase()})!`);
+      setShowExportModal(false);
     } catch (err) {
       toast.error(err.response?.data?.error || err.message || 'Failed to export cafeteria transactions');
     } finally {
@@ -112,7 +120,7 @@ const StaffAdminDashboard = () => {
   if (loading && !dashboardData) {
     return (
       <div className="space-y-6 pb-16">
-        <SectionHeading kicker="Cafeteria Operations" title="Loading Cafeteria Transactions…" hint="Connecting to kitchen station and live transaction ledger…" />
+        <SectionHeading kicker="Cafeteria Operations" title="Loading Cafeteria Transactions…" hint="Connecting to the live transaction ledger…" />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-28 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-2xs animate-pulse">
@@ -139,7 +147,7 @@ const StaffAdminDashboard = () => {
       <SectionHeading
         kicker="Staff Admin Portal"
         title="Cafeteria Transactions & Analytics"
-        hint="Live monitoring of cafeteria orders, kitchen volume, food sales and dish popularity."
+        hint="Live monitoring of cafeteria orders, food sales and dish popularity."
         right={
           <div className="flex items-center gap-2">
             <button
@@ -155,12 +163,12 @@ const StaffAdminDashboard = () => {
               {exportRange.startDate && exportRange.endDate ? 'Date Range Set' : 'Date Range'}
             </button>
             <button
-              onClick={() => handleExportTransactions('xlsx')}
+              onClick={() => setShowExportModal(true)}
               disabled={exporting}
               className="btn-tactile inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-900 shadow-2xs hover:bg-emerald-100 transition-colors"
             >
-              <Download className="h-3.5 w-3.5 text-emerald-700" />
-              Export Orders (Excel)
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-700" /> : <Download className="h-3.5 w-3.5 text-emerald-700" />}
+              Export Audit Logs
             </button>
             <button
               onClick={fetchDashboardData}
@@ -260,7 +268,7 @@ const StaffAdminDashboard = () => {
           </p>
         </motion.div>
 
-        {/* Active Kitchen Queue */}
+        {/* Active Order Queue */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -269,10 +277,10 @@ const StaffAdminDashboard = () => {
         >
           <div className="flex items-center justify-between">
             <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-2xs">
-              <ChefHat className="h-5 w-5" />
+              <ClipboardList className="h-5 w-5" />
             </span>
             <span className="font-mono-tokens text-[11px] font-bold uppercase tracking-wider text-amber-900">
-              Kitchen Queue
+              Order Queue
             </span>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
@@ -280,7 +288,7 @@ const StaffAdminDashboard = () => {
               {queue.pending + queue.approved}
             </span>
             <span className="text-xs font-semibold text-amber-800">
-              ({queue.pending} pending · {queue.approved} in pass)
+              ({queue.pending} pending · {queue.approved} preparing)
             </span>
           </div>
           <p className="mt-1 text-xs text-amber-900 font-medium">
@@ -315,7 +323,7 @@ const StaffAdminDashboard = () => {
             </div>
 
             {/* Bars */}
-            <div className="grid grid-cols-8 sm:grid-cols-15 gap-1.5 items-end h-40 pt-6 pb-2">
+            <div className="grid grid-flow-col auto-cols-fr gap-1 items-end h-40 pt-6 pb-2">
               {hourlyRush.map((hr) => {
                 const heightPct = Math.max(8, Math.round((hr.orders / maxHourlyOrders) * 100));
                 const isPeak = hr.orders === maxHourlyOrders && hr.orders > 0;
@@ -475,7 +483,7 @@ const StaffAdminDashboard = () => {
               className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink outline-none focus:border-cobalt-500"
             >
               <option value="all">All Statuses</option>
-              <option value="in_kitchen">In Kitchen / Pass</option>
+              <option value="in_kitchen">Preparing</option>
               <option value="completed">Completed</option>
               <option value="declined">Declined</option>
               <option value="cancelled">Cancelled</option>
@@ -585,6 +593,88 @@ const StaffAdminDashboard = () => {
           onClose={() => setSelectedReceiptOrder(null)}
         />
       )}
+
+      {/* Role-Based Export Audit Modal */}
+      <Modal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        title="Export Kitchen & Hierarchy Audit Logs"
+        subtitle="Download kitchen transactions, food menu catalogs, and office consumption summaries"
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          {/* Format selection */}
+          <div>
+            <label className="block text-xs font-bold text-ink mb-2">Export Format</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'xlsx', label: 'Excel Workbook', ext: '.xlsx', Icon: FileSpreadsheet },
+                { id: 'csv', label: 'CSV File', ext: '.csv', Icon: FileSpreadsheet },
+                { id: 'pdf', label: 'PDF Document', ext: '.pdf', Icon: FileText },
+              ].map((fmt) => (
+                <button
+                  key={fmt.id}
+                  type="button"
+                  onClick={() => setExportFormat(fmt.id)}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border text-center transition-all ${
+                    exportFormat === fmt.id
+                      ? 'border-emerald-600 bg-emerald-50/70 text-emerald-900 ring-2 ring-emerald-500/20'
+                      : 'border-slate-200 bg-white text-ink hover:border-slate-300'
+                  }`}
+                >
+                  <fmt.Icon className={`h-4 w-4 mb-1 ${exportFormat === fmt.id ? 'text-emerald-600' : 'text-slate-400'}`} />
+                  <span className="text-[11px] font-bold">{fmt.label}</span>
+                  <span className="text-[9px] text-ink-mute font-mono">{fmt.ext}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Scope selection */}
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1.5">Report Scope</label>
+            <select
+              value={exportReportType}
+              onChange={(e) => setExportReportType(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-emerald-500"
+            >
+              <option value="transactions">Kitchen Food Transactions & Order Details (Includes staff who accepted)</option>
+              <option value="menu">Kitchen Food Menu & Dish Audit Log (Pricing, Veg/Non-Veg, Live Counters)</option>
+              <option value="allocations">Office Diners Token Consumption Summary</option>
+            </select>
+          </div>
+
+          {/* Date range filter */}
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1.5">Date Range (Optional)</label>
+            <DateRangePicker
+              startDate={exportRange.startDate}
+              endDate={exportRange.endDate}
+              onChange={setExportRange}
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setShowExportModal(false)}
+              disabled={exporting}
+              className="btn-tactile rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-ink hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportTransactions(exportFormat, exportReportType)}
+              disabled={exporting}
+              className="btn-tactile inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-2xs"
+            >
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Download {exportFormat.toUpperCase()}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

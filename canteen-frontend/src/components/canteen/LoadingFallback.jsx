@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { CupGlyph } from '../lineart';
 
-const LoadingFallback = memo(function LoadingFallback({ message = 'Warming up the kitchen…' }) {
+const LoadingFallback = memo(function LoadingFallback({ message = 'Loading workspace.' }) {
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-5 bg-paper px-4 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cobalt-600 text-white shadow-card">

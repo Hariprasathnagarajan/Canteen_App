@@ -39,7 +39,7 @@ const PAGE_TITLES = {
   '/employee/orders': 'My Orders | VDart Cafe',
   '/guest/menu': 'Guest Menu | VDart Cafe',
   '/guest/orders': 'Guest Orders | VDart Cafe',
-  '/staff/orders': 'Kitchen Orders | VDart Cafe',
+  '/staff/orders': 'Staff Orders | VDart Cafe',
   '/staff/menu': 'Menu Management | VDart Cafe',
   '/staff-admin/dashboard': 'Cafeteria Transactions | VDart Cafe',
   '/admin/dashboard': 'Admin Dashboard | VDart Cafe',

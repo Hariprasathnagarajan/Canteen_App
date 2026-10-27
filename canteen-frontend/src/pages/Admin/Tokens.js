@@ -28,6 +28,7 @@ import {
   TrendingDown,
   Lock,
   Save,
+  Edit2,
   ChevronDown,
   ChevronUp,
   Filter,
@@ -42,6 +43,7 @@ import { useApi } from '../../hooks/useApi';
 import SectionHeading from '../../components/canteen/SectionHeading';
 import TokenPill from '../../components/canteen/TokenPill';
 import EmptyState from '../../components/canteen/EmptyState';
+import { normalizeHistoryCycle } from '../../utils/tokenHistory';
 
 const SHIFT_CONFIGS = {
   day_shift: {
@@ -99,11 +101,11 @@ const AdminTokens = () => {
     day_shift_policy_quota: 100,
     mid_shift_policy_quota: 100,
     night_shift_policy_quota: 100,
+    daily_token_limit: 300,
     day_shift_daily_limit: 300,
-    mid_shift_daily_limit: 250,
+    mid_shift_daily_limit: 300,
     night_shift_daily_limit: 300,
     token_allocation_day: 20,
-    reminder_days_before_reset: 3,
     shift_reset_mode: 'shift_based'
   });
   const [savingSettings, setSavingSettings] = useState(false);
@@ -244,7 +246,6 @@ const AdminTokens = () => {
           mid_shift_daily_limit: res.data.mid_shift_daily_limit ?? 250,
           night_shift_daily_limit: res.data.night_shift_daily_limit ?? 300,
           token_allocation_day: res.data.token_allocation_day ?? 20,
-          reminder_days_before_reset: res.data.reminder_days_before_reset ?? 3,
           shift_reset_mode: res.data.shift_reset_mode || 'shift_based'
         });
       }
@@ -265,7 +266,10 @@ const AdminTokens = () => {
       });
       const res = await adminAPI.getAllocationHistory(cleanParams);
       if (res?.data) {
-        setHistoryData(res.data);
+        setHistoryData({
+          ...res.data,
+          cycles: (res.data.cycles || []).map(normalizeHistoryCycle),
+        });
       }
     } catch (err) {
       console.error('Failed to load allocation history', err);
@@ -323,20 +327,93 @@ const AdminTokens = () => {
       toast.error('Only Super Admin is authorized to modify token policies.');
       return;
     }
+
+    const dayLimit = Number(settings.day_shift_daily_limit) || 0;
+    const midLimit = Number(settings.mid_shift_daily_limit) || 0;
+    const nightLimit = Number(settings.night_shift_daily_limit) || 0;
+
+    if (dayLimit < 0 || midLimit < 0 || nightLimit < 0) {
+      toast.error('Enter valid daily limits (0 or more).');
+      return;
+    }
+
     setSavingSettings(true);
     try {
       await adminAPI.updateSettings({
         day_shift_policy_quota: Number(settings.day_shift_policy_quota) || 100,
         mid_shift_policy_quota: Number(settings.mid_shift_policy_quota) || 100,
         night_shift_policy_quota: Number(settings.night_shift_policy_quota) || 100,
-        day_shift_daily_limit: Number(settings.day_shift_daily_limit) || 300,
-        mid_shift_daily_limit: Number(settings.mid_shift_daily_limit) || 250,
-        night_shift_daily_limit: Number(settings.night_shift_daily_limit) || 300,
+        day_shift_daily_limit: dayLimit,
+        mid_shift_daily_limit: midLimit,
+        night_shift_daily_limit: nightLimit,
         token_allocation_day: Math.min(28, Math.max(1, Number(settings.token_allocation_day) || 20)),
-        reminder_days_before_reset: Math.min(14, Math.max(1, Number(settings.reminder_days_before_reset) || 3)),
-        shift_reset_mode: settings.shift_reset_mode || 'shift_based',
+        shift_reset_mode: 'shift_based',
       });
-      toast.success('Token policy quotas and schedule updated successfully!');
+      toast.success('Shift policy quotas and shift-wise daily limits updated successfully!');
+      await loadSettings();
+      await loadSummary();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update shift policy.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Policy & Limits Edit Modal State
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [policyForm, setPolicyForm] = useState({
+    day_shift_policy_quota: 100,
+    mid_shift_policy_quota: 100,
+    night_shift_policy_quota: 100,
+    token_allocation_day: 20,
+    day_shift_daily_limit: 300,
+    mid_shift_daily_limit: 250,
+    night_shift_daily_limit: 300,
+  });
+
+  const handleOpenPolicyModal = () => {
+    setPolicyForm({
+      day_shift_policy_quota: settings.day_shift_policy_quota ?? 100,
+      mid_shift_policy_quota: settings.mid_shift_policy_quota ?? 100,
+      night_shift_policy_quota: settings.night_shift_policy_quota ?? 100,
+      token_allocation_day: settings.token_allocation_day ?? 20,
+      day_shift_daily_limit: settings.day_shift_daily_limit ?? 300,
+      mid_shift_daily_limit: settings.mid_shift_daily_limit ?? 250,
+      night_shift_daily_limit: settings.night_shift_daily_limit ?? 300,
+    });
+    setShowPolicyModal(true);
+  };
+
+  const handleSavePolicyModal = async (e) => {
+    if (e) e.preventDefault();
+    if (!isSuperAdmin) {
+      toast.error('Only Super Admin is authorized to modify token policies.');
+      return;
+    }
+
+    const dayLimit = Number(policyForm.day_shift_daily_limit) || 0;
+    const midLimit = Number(policyForm.mid_shift_daily_limit) || 0;
+    const nightLimit = Number(policyForm.night_shift_daily_limit) || 0;
+
+    if (dayLimit < 0 || midLimit < 0 || nightLimit < 0) {
+      toast.error('Enter valid daily limits (0 or more).');
+      return;
+    }
+
+    setSavingSettings(true);
+    try {
+      await adminAPI.updateSettings({
+        day_shift_policy_quota: Number(policyForm.day_shift_policy_quota) || 100,
+        mid_shift_policy_quota: Number(policyForm.mid_shift_policy_quota) || 100,
+        night_shift_policy_quota: Number(policyForm.night_shift_policy_quota) || 100,
+        day_shift_daily_limit: dayLimit,
+        mid_shift_daily_limit: midLimit,
+        night_shift_daily_limit: nightLimit,
+        token_allocation_day: Math.min(28, Math.max(1, Number(policyForm.token_allocation_day) || 20)),
+        shift_reset_mode: 'shift_based',
+      });
+      toast.success('Shift policy quotas and daily limits updated successfully!');
+      setShowPolicyModal(false);
       await loadSettings();
       await loadSummary();
     } catch (err) {
@@ -600,7 +677,7 @@ const AdminTokens = () => {
         `Total Unused: ${overallMetrics.unused} tk`
       ]);
       rows.push([]);
-      rows.push(['User ID', 'Full Name', 'Username', 'Email', 'Role', 'Work Shift', 'Tokens Distributed (tk)', 'Tokens Spent (tk)', 'Unused Balance (tk)', 'Orders This Month', 'Status']);
+      rows.push(['Employee ID', 'Full Name', 'Name', 'Email', 'Role', 'Work Shift', 'Tokens Distributed (tk)', 'Tokens Spent (tk)', 'Unused Balance (tk)', 'Orders This Month', 'Status']);
 
       const shifts = [
         { key: 'day_shift', name: 'Day Shift' },
@@ -825,106 +902,73 @@ const AdminTokens = () => {
 
       {activeTab === 'allocation' ? (
         <>
-          {/* SECTION 1: PROMINENT MONTHLY TOKEN ALLOCATION MODE CARD */}
-          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50/50 to-cobalt-50/20 p-6 shadow-sm">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-              <div className="space-y-3 max-w-2xl">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-500">
-                    Configuration & Governance
-                  </span>
+          {/* SECTION 1: MONTHLY TOKEN ALLOCATION GOVERNANCE & APPROVAL (Unified & Streamlined) */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-sm transition-all">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+              <div className="space-y-2 max-w-2xl">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black tracking-wide ${
                     isAutomaticMode 
-                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' 
-                      : 'bg-amber-100 text-amber-900 border border-amber-300'
+                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-300' 
+                      : 'bg-amber-50 text-amber-900 border border-amber-300'
                   }`}>
                     <span className={`h-2 w-2 rounded-full ${isAutomaticMode ? 'bg-emerald-600 animate-pulse' : 'bg-amber-600'}`} />
-                    MODE: {isAutomaticMode ? 'AUTOMATIC (ACTIVE)' : 'MANUAL (ACTIVE)'}
+                    {isAutomaticMode ? 'AUTOMATIC MODE (SCHEDULED)' : 'MANUAL MODE (ON-DEMAND)'}
                   </span>
-                  {isSuperAdmin ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-700 border border-slate-200">
-                      <ShieldCheck className="h-3 w-3 text-emerald-600" />
-                      Super Admin Managed
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600 border border-slate-200">
-                      <Lock className="h-3 w-3 text-slate-500" />
-                      Read-Only (Super Admin Required)
+
+                  <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                    Cycle: {cycleInfo?.cycle_label || '20th to 19th'} · Reset Day: {settings.token_allocation_day || 20}
+                  </span>
+
+                  {isAutomaticMode && (
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${
+                      resetApprovalInfo?.is_approved 
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                        : 'bg-amber-100 text-amber-900 border border-amber-300'
+                    }`}>
+                      {resetApprovalInfo?.is_approved ? (
+                        <>
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                          Allocated & Active
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="h-3.5 w-3.5 text-amber-600" />
+                          Review & Approval Required
+                        </>
+                      )}
                     </span>
                   )}
                 </div>
 
-                <h3 className="text-lg sm:text-xl font-black text-ink tracking-tight">
-                  Monthly Token Allocation Mode
+                <h3 className="text-lg sm:text-xl font-extrabold text-ink tracking-tight">
+                  Monthly Token Allocation & Distribution
                 </h3>
 
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
                   {isAutomaticMode ? (
-                    <>
-                      <strong>Automatic Mode is ACTIVE.</strong> The system automatically calculates monthly token quotas for 
-                      each shift (Day, Mid, Night) based on active policy, creates an advance proposal for Super Admin review, and 
-                      credits diner wallets on the scheduled billing cycle date (20th of the month) once approved.
-                    </>
+                    resetApprovalInfo?.is_approved ? (
+                      <>
+                        Monthly allowance tokens for the active cycle have been distributed to diner accounts according to approved policy
+                        {resetApprovalInfo.approval_record?.approved_by ? ` (authorized by ${resetApprovalInfo.approval_record.approved_by}).` : '.'}
+                      </>
+                    ) : (
+                      <>
+                        Advance token distribution proposal is calculated for <strong>{proposal?.total_eligible_diners ?? totalEmployees} active diners</strong>. Review and authorize distribution in popup modal to credit wallets on Day {settings.token_allocation_day || 20}.
+                      </>
+                    )
                   ) : (
                     <>
-                      <strong>Manual Mode is ACTIVE.</strong> Scheduled automated allocation is disabled. The system will NOT 
-                      distribute tokens automatically. Super Admin must manually configure and trigger token distribution for 
-                      each shift or diner.
+                      Manual mode is active. Routine automated reset scheduling is paused. Super Admin executes token distribution on-demand below.
                     </>
                   )}
                 </p>
-
-                {/* Billing Cycle Dates & Status Pill Matrix */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-                  <div className="rounded-xl border border-slate-200 bg-white p-2.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Current Cycle</span>
-                    <span className="text-xs font-bold text-ink mt-0.5 block truncate" title={cycleInfo?.cycle_label || '20th to 19th'}>
-                      {cycleInfo?.cycle_label || '20th to 19th'}
-                    </span>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-white p-2.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Next Run Date</span>
-                    <span className="text-xs font-bold text-cobalt-700 mt-0.5 block">
-                      {cycleInfo?.next_allocation_run_date || 'Day 20'}
-                    </span>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-white p-2.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Last Successful Run</span>
-                    <span className="text-xs font-bold text-slate-700 mt-0.5 block">
-                      {cycleInfo?.last_successful_allocation_date || 'None'}
-                    </span>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-white p-2.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Approval Status</span>
-                    <span className={`text-xs font-bold mt-0.5 block capitalize ${
-                      resetApprovalInfo?.status === 'approved' 
-                        ? 'text-emerald-700' 
-                        : resetApprovalInfo?.status === 'rejected'
-                        ? 'text-rose-700'
-                        : 'text-amber-700'
-                    }`}>
-                      {resetApprovalInfo?.status === 'approved' 
-                        ? 'Approved & Allocated' 
-                        : resetApprovalInfo?.status === 'rejected'
-                        ? 'Proposal Rejected'
-                        : 'Awaiting Approval'}
-                    </span>
-                  </div>
-                </div>
               </div>
 
-              {/* Mode Toggle Switch Control */}
-              <div className="flex flex-col items-start lg:items-end gap-3 shrink-0 self-start lg:self-center border-t lg:border-t-0 lg:border-l border-slate-200 pt-4 lg:pt-0 lg:pl-6">
-                <span className="text-xs font-bold text-slate-700">Toggle Allocation Mode:</span>
-                
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs font-black ${!isAutomaticMode ? 'text-amber-700' : 'text-slate-400'}`}>
-                    Manual
-                  </span>
-                  
+              {/* Mode Toggle Switch & Quick Action */}
+              <div className="flex flex-col sm:flex-row lg:flex-col items-start lg:items-end gap-3 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 lg:border-l border-slate-100 lg:pl-6">
+                <div className="flex items-center gap-2.5">
+                  <span className={`text-xs font-bold ${!isAutomaticMode ? 'text-amber-800' : 'text-slate-400'}`}>Manual</span>
                   <button
                     id="toggle-allocation-mode"
                     type="button"
@@ -933,123 +977,32 @@ const AdminTokens = () => {
                     onClick={handleToggleMode}
                     disabled={!isSuperAdmin || togglingMode}
                     title={!isSuperAdmin ? 'Only Super Admin can change allocation mode' : `Switch to ${isAutomaticMode ? 'Manual' : 'Automatic'} mode`}
-                    className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-cobalt-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${
                       isAutomaticMode ? 'bg-emerald-600' : 'bg-slate-300'
                     }`}
                   >
                     <span className="sr-only">Toggle Monthly Token Allocation Mode</span>
                     <span
                       aria-hidden="true"
-                      className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        isAutomaticMode ? 'translate-x-8' : 'translate-x-0'
+                      className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        isAutomaticMode ? 'translate-x-7' : 'translate-x-0'
                       }`}
                     />
                   </button>
-
-                  <span className={`text-xs font-black ${isAutomaticMode ? 'text-emerald-700' : 'text-slate-400'}`}>
-                    Automatic
-                  </span>
+                  <span className={`text-xs font-bold ${isAutomaticMode ? 'text-emerald-700' : 'text-slate-400'}`}>Automatic</span>
                 </div>
 
-                <p className="text-[11px] text-slate-500 text-left lg:text-right max-w-xs">
-                  {isSuperAdmin 
-                    ? 'Click switch to toggle between Automatic approval-based scheduling and Manual on-demand allocation.'
-                    : 'Only Super Admin can toggle between Automatic and Manual allocation modes.'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 2: PROPOSAL & APPROVAL STATUS (When in Automatic Mode) */}
-          {isAutomaticMode && (
-            <div className={`overflow-hidden rounded-3xl border p-5 shadow-sm transition-all ${
-              resetApprovalInfo?.is_approved
-                ? 'border-emerald-200/80 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-white text-slate-900'
-                : 'border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50/40 to-white text-slate-900'
-            }`}>
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div className="flex items-start gap-3.5">
-                  <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-2xs border ${
-                    resetApprovalInfo?.is_approved
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                      : 'bg-amber-100 text-amber-900 border-amber-200'
-                  }`}>
-                    {resetApprovalInfo?.is_approved ? (
-                      <CheckCircle2 className="h-6 w-6 text-emerald-700" />
-                    ) : (
-                      <Clock className="h-6 w-6 text-amber-700" />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-extrabold text-base text-slate-900">
-                        {resetApprovalInfo?.is_approved
-                          ? 'Current Billing Cycle Allocation: Approved & Distributed'
-                          : 'Upcoming Billing Cycle Allocation: Awaiting Super Admin Approval'}
-                      </span>
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                        resetApprovalInfo?.is_approved
-                          ? 'bg-emerald-200/80 text-emerald-950'
-                          : 'bg-amber-200/80 text-amber-950'
-                      }`}>
-                        {resetApprovalInfo?.is_approved ? 'Status: Approved' : 'Action Required: Review Proposal'}
-                      </span>
-                    </div>
-
-                    <p className="mt-1 text-xs text-slate-700 leading-relaxed max-w-3xl">
-                      {resetApprovalInfo?.is_approved ? (
-                        <>
-                          Tokens for the active cycle have been distributed to diner accounts according to the approved proposal. 
-                          {resetApprovalInfo.approval_record?.approved_by && (
-                            <span> Approved by <strong>{resetApprovalInfo.approval_record.approved_by}</strong> on {resetApprovalInfo.approval_record.approved_at}.</span>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          Under Automatic Mode, monthly token distribution is approval-gated. 
-                          The proposal below is calculated based on active company shift policy quotas for <strong>{proposal?.total_eligible_diners ?? totalEmployees} eligible personnel</strong>.
-                        </>
-                      )}
-                    </p>
-
-                    {/* Proposal Preview Grid */}
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                      {['day', 'mid', 'night'].map(sh => {
-                        const shData = proposal?.shift_breakdown?.[sh];
-                        const cfg = SHIFT_CONFIGS[`${sh}_shift`];
-                        return (
-                          <div key={sh} className="rounded-xl bg-white/90 p-2.5 border border-slate-200 shadow-2xs flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className={`p-1 rounded-lg ${cfg.iconBg}`}>
-                                <cfg.icon className="h-3.5 w-3.5" />
-                              </span>
-                              <div>
-                                <span className="font-bold text-ink block">{cfg.name}</span>
-                                <span className="text-[10px] text-slate-500">{shData?.count ?? 0} diners × {shData?.policy_quota ?? 100} tk</span>
-                              </div>
-                            </div>
-                            <span className="font-mono-tokens font-black text-cobalt-700 text-xs">
-                              {shData?.proposed_total ?? 0} tk
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-wrap items-center gap-2.5 self-end lg:self-auto shrink-0">
-                  {!resetApprovalInfo?.is_approved ? (
-                    <>
+                {/* Primary Action Button */}
+                {isAutomaticMode ? (
+                  !resetApprovalInfo?.is_approved ? (
+                    <div className="flex items-center gap-2">
                       <button
                         id="btn-reject-proposal"
                         onClick={() => setShowRejectModal(true)}
                         disabled={!isSuperAdmin}
-                        className="btn-tactile inline-flex items-center gap-1.5 rounded-2xl border border-rose-300 bg-white hover:bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-700 shadow-sm transition disabled:opacity-50 cursor-pointer"
-                        title={!isSuperAdmin ? 'Only Super Admin can reject proposals' : 'Reject proposal'}
+                        className="btn-tactile inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-white hover:bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-700 shadow-2xs transition disabled:opacity-50 cursor-pointer"
                       >
-                        <XCircle className="h-4 w-4" />
+                        <XCircle className="h-3.5 w-3.5" />
                         <span>Reject</span>
                       </button>
 
@@ -1057,29 +1010,44 @@ const AdminTokens = () => {
                         id="btn-review-approve"
                         onClick={handleOpenApprovalModal}
                         disabled={!isSuperAdmin}
-                        className="btn-tactile inline-flex items-center gap-2 rounded-2xl bg-amber-600 hover:bg-amber-700 px-5 py-3 text-xs font-extrabold text-white shadow-sm transition disabled:opacity-50 cursor-pointer"
-                        title={!isSuperAdmin ? 'Only Super Admin can approve token resets' : 'Review and approve proposed distribution'}
+                        className="btn-tactile inline-flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-4 py-2 text-xs font-extrabold text-white shadow-2xs transition disabled:opacity-50 cursor-pointer"
+                        title="Review shift quotas in popup modal and approve distribution"
                       >
-                        {!isSuperAdmin ? <Lock className="h-4 w-4 text-white/80" /> : <ShieldCheck className="h-4 w-4 text-white" />}
-                        <span>Review & Approve & Distribute</span>
+                        <ShieldCheck className="h-4 w-4" />
+                        <span>Review & Approve</span>
                       </button>
-                    </>
+                    </div>
                   ) : (
                     <button
                       id="btn-reapprove"
                       onClick={handleOpenApprovalModal}
                       disabled={!isSuperAdmin}
-                      className="btn-tactile inline-flex items-center gap-2 rounded-2xl border border-emerald-300 bg-white px-4 py-2.5 text-xs font-bold text-emerald-900 shadow-sm transition hover:bg-emerald-50 disabled:opacity-50 cursor-pointer"
-                      title="Modify quotas or re-apply distribution"
+                      className="btn-tactile inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-900 shadow-2xs transition hover:bg-emerald-100 disabled:opacity-50 cursor-pointer"
                     >
-                      {!isSuperAdmin ? <Lock className="h-4 w-4 text-emerald-700" /> : <Coins className="h-4 w-4 text-emerald-700" />}
-                      <span>Modify / Re-Approve Distribution</span>
+                      <Coins className="h-4 w-4 text-emerald-700" />
+                      <span>Modify / Re-Approve</span>
                     </button>
-                  )}
-                </div>
+                  )
+                ) : (
+                  <button
+                    id="btn-allocate-all-shifts"
+                    onClick={() => {
+                      if (!isSuperAdmin) {
+                        toast.info('Only Super Admin can execute manual allocation.');
+                        return;
+                      }
+                      openConfirmModal('all');
+                    }}
+                    disabled={!isSuperAdmin || assigningShift !== null || totalEmployees === 0}
+                    className="btn-tactile inline-flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-4 py-2 text-xs font-bold text-white shadow-2xs transition disabled:opacity-50 cursor-pointer"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    <span>{assigningShift === 'all' ? 'Allocating All...' : 'Allocate All Shifts'}</span>
+                  </button>
+                )}
               </div>
             </div>
-          )}
+          </div>
 
           {/* SECTION 3: MANUAL ALLOCATION CONTROLS (Displayed when Automatic Mode is OFF) */}
           {!isAutomaticMode && (
@@ -1215,182 +1183,121 @@ const AdminTokens = () => {
             </div>
           )}
 
-          {/* SECTION 4: SHIFT POLICY QUOTAS & DAILY SPENDING LIMITS (Super Admin Configurable) */}
-          <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          {/* SECTION 4: SHIFT POLICY QUOTAS & DAILY LIMITS (Simple, Minimal & Responsive Summary View) */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-sm transition-all">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700 shadow-2xs">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700 shadow-2xs">
                   <SlidersHorizontal className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base sm:text-lg font-bold text-ink">
-                      Shift Policy Quotas & Daily Limits Configuration
+                    <h3 className="text-sm sm:text-base font-extrabold text-ink">
+                      Shift Policy Quotas & Daily Limits
                     </h3>
-                    {isSuperAdmin ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800 border border-emerald-200">
-                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                        Super Admin Configurable
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900 border border-amber-300">
-                        <Lock className="h-3.5 w-3.5 text-amber-700" />
-                        Super Admin Only (Read-Only)
-                      </span>
-                    )}
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+                      <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                      Active Policies
+                    </span>
                   </div>
-                  <p className="mt-0.5 text-xs text-ink-mute">
-                    Saved default monthly quotas, spending caps, and reset schedule day (20th to 19th). Used for automatic proposals and manual defaults.
+                  <p className="text-[11px] sm:text-xs text-ink-mute mt-0.5">
+                    Monthly allowances and daily spending caps per diner
                   </p>
                 </div>
               </div>
 
               {isSuperAdmin && (
                 <button
-                  id="btn-save-policy"
-                  onClick={handleSaveShiftPolicy}
-                  disabled={savingSettings}
-                  className="btn-tactile inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50 shrink-0 cursor-pointer"
+                  id="btn-edit-policy-modal"
+                  onClick={handleOpenPolicyModal}
+                  className="btn-tactile inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition cursor-pointer w-full sm:w-auto shrink-0"
+                  title="Modify monthly quotas and daily limits in popup modal"
                 >
-                  <Save className="h-4 w-4" />
-                  <span>{savingSettings ? 'Saving Policy...' : 'Save Policy Quotas'}</span>
+                  <Edit2 className="h-3.5 w-3.5" />
+                  <span>Edit Policy & Limits</span>
                 </button>
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-4">
-              {/* Day Policy Quota */}
-              <div className="rounded-2xl border border-cobalt-200/70 bg-cobalt-50/20 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="flex items-center gap-1.5 text-xs font-bold text-cobalt-900">
-                    <Sun className="h-4 w-4 text-cobalt-600" />
-                    Day Policy Quota
-                  </span>
-                  <span className="font-mono-tokens text-xs font-black text-cobalt-700 bg-cobalt-100/70 px-2 py-0.5 rounded-lg">
-                    {settings.day_shift_policy_quota || 100} tk
-                  </span>
+            {/* Responsive 4-Column Grid: 2 cols on mobile, 4 on desktop */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 pt-3 sm:pt-4">
+              {/* Day Shift */}
+              <div className="rounded-2xl border border-cobalt-200/70 bg-cobalt-50/20 p-3 sm:p-3.5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-cobalt-950">
+                      <Sun className="h-3.5 w-3.5 text-cobalt-600" />
+                      Day Shift
+                    </span>
+                    <span className="font-mono-tokens text-[11px] font-black text-cobalt-700 bg-cobalt-100/80 px-2 py-0.5 rounded-md">
+                      {settings.day_shift_policy_quota || 100} tk
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-ink-mute block">Monthly allowance</span>
                 </div>
-                <p className="text-[11px] text-ink-mute mb-2">Monthly allowance per diner</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="input-policy-day"
-                    type="number"
-                    min="0"
-                    max="5000"
-                    disabled={!isSuperAdmin}
-                    value={settings.day_shift_policy_quota ?? 100}
-                    onChange={(e) => setSettings(prev => ({ ...prev, day_shift_policy_quota: e.target.value === '' ? '' : parseInt(e.target.value) || 0 }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-cobalt-500 disabled:bg-slate-100 disabled:text-slate-500"
-                  />
-                  <span className="font-mono-tokens text-xs font-bold text-ink-mute">tk</span>
+                <div className="flex items-center justify-between text-[11px] text-ink-mute pt-2 mt-2 border-t border-cobalt-100/80">
+                  <span className="text-[10px]">Daily Cap:</span>
+                  <strong className="font-mono text-ink text-xs font-bold">{settings.day_shift_daily_limit ?? 0} tk/day</strong>
                 </div>
               </div>
 
-              {/* Mid Policy Quota */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                    <Sunset className="h-4 w-4 text-slate-600" />
-                    Mid Policy Quota
-                  </span>
-                  <span className="font-mono-tokens text-xs font-black text-slate-800 bg-slate-200/70 px-2 py-0.5 rounded-lg">
-                    {settings.mid_shift_policy_quota || 100} tk
-                  </span>
+              {/* Mid Shift */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3 sm:p-3.5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                      <Sunset className="h-3.5 w-3.5 text-slate-600" />
+                      Mid Shift
+                    </span>
+                    <span className="font-mono-tokens text-[11px] font-black text-slate-800 bg-slate-200/70 px-2 py-0.5 rounded-md">
+                      {settings.mid_shift_policy_quota || 100} tk
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-ink-mute block">Monthly allowance</span>
                 </div>
-                <p className="text-[11px] text-ink-mute mb-2">Monthly allowance per diner</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="input-policy-mid"
-                    type="number"
-                    min="0"
-                    max="5000"
-                    disabled={!isSuperAdmin}
-                    value={settings.mid_shift_policy_quota ?? 100}
-                    onChange={(e) => setSettings(prev => ({ ...prev, mid_shift_policy_quota: e.target.value === '' ? '' : parseInt(e.target.value) || 0 }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-slate-500 disabled:bg-slate-100 disabled:text-slate-500"
-                  />
-                  <span className="font-mono-tokens text-xs font-bold text-ink-mute">tk</span>
+                <div className="flex items-center justify-between text-[11px] text-ink-mute pt-2 mt-2 border-t border-slate-200/70">
+                  <span className="text-[10px]">Daily Cap:</span>
+                  <strong className="font-mono text-ink text-xs font-bold">{settings.mid_shift_daily_limit ?? 0} tk/day</strong>
                 </div>
               </div>
 
-              {/* Night Policy Quota */}
-              <div className="rounded-2xl border border-slate-300 bg-slate-100/30 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                    <Moon className="h-4 w-4 text-slate-700" />
-                    Night Policy Quota
-                  </span>
-                  <span className="font-mono-tokens text-xs font-black text-slate-900 bg-slate-300/70 px-2 py-0.5 rounded-lg">
-                    {settings.night_shift_policy_quota || 100} tk
-                  </span>
+              {/* Night Shift */}
+              <div className="rounded-2xl border border-slate-300 bg-slate-100/40 p-3 sm:p-3.5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                      <Moon className="h-3.5 w-3.5 text-slate-700" />
+                      Night Shift
+                    </span>
+                    <span className="font-mono-tokens text-[11px] font-black text-slate-900 bg-slate-300/70 px-2 py-0.5 rounded-md">
+                      {settings.night_shift_policy_quota || 100} tk
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-ink-mute block">Monthly allowance</span>
                 </div>
-                <p className="text-[11px] text-ink-mute mb-2">Monthly allowance per diner</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="input-policy-night"
-                    type="number"
-                    min="0"
-                    max="5000"
-                    disabled={!isSuperAdmin}
-                    value={settings.night_shift_policy_quota ?? 100}
-                    onChange={(e) => setSettings(prev => ({ ...prev, night_shift_policy_quota: e.target.value === '' ? '' : parseInt(e.target.value) || 0 }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-slate-500 disabled:bg-slate-100 disabled:text-slate-500"
-                  />
-                  <span className="font-mono-tokens text-xs font-bold text-ink-mute">tk</span>
+                <div className="flex items-center justify-between text-[11px] text-ink-mute pt-2 mt-2 border-t border-slate-200">
+                  <span className="text-[10px]">Daily Cap:</span>
+                  <strong className="font-mono text-ink text-xs font-bold">{settings.night_shift_daily_limit ?? 0} tk/day</strong>
                 </div>
               </div>
 
               {/* Reset Day */}
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/30 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
-                    <Calendar className="h-4 w-4 text-amber-700" />
-                    Reset Cycle Day
-                  </span>
-                  <span className="font-mono-tokens text-xs font-black text-amber-900 bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200">
-                    Day {settings.token_allocation_day || 20}
-                  </span>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-3 sm:p-3.5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
+                      <Calendar className="h-3.5 w-3.5 text-amber-700" />
+                      Reset Day
+                    </span>
+                    <span className="font-mono-tokens text-[11px] font-black text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200">
+                      Day {settings.token_allocation_day || 20}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-ink-mute block">Monthly renewal date</span>
                 </div>
-                <p className="text-[11px] text-ink-mute mb-2">Cycle: 20th through 19th</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="input-policy-day-of-month"
-                    type="number"
-                    min="1"
-                    max="28"
-                    disabled={!isSuperAdmin}
-                    value={settings.token_allocation_day ?? 20}
-                    onChange={(e) => setSettings(prev => ({ ...prev, token_allocation_day: e.target.value === '' ? '' : parseInt(e.target.value) || 20 }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-amber-500 disabled:bg-slate-100 disabled:text-slate-500"
-                  />
-                  <span className="font-mono-tokens text-xs font-bold text-ink-mute">of mo.</span>
-                </div>
-              </div>
-
-              {/* Advance Reminder Notice */}
-              <div className="rounded-2xl border border-teal-200 bg-teal-50/30 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="flex items-center gap-1.5 text-xs font-bold text-teal-950">
-                    <Clock className="h-4 w-4 text-teal-700" />
-                    Admin Reminder
-                  </span>
-                  <span className="font-mono-tokens text-xs font-black text-teal-900 bg-teal-100 px-2 py-0.5 rounded-lg border border-teal-200">
-                    {settings.reminder_days_before_reset || 3}d before
-                  </span>
-                </div>
-                <p className="text-[11px] text-ink-mute mb-2">Advance notice to Super Admin</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="input-policy-reminder-days"
-                    type="number"
-                    min="1"
-                    max="14"
-                    disabled={!isSuperAdmin}
-                    value={settings.reminder_days_before_reset ?? 3}
-                    onChange={(e) => setSettings(prev => ({ ...prev, reminder_days_before_reset: e.target.value === '' ? '' : parseInt(e.target.value) || 3 }))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-teal-500 disabled:bg-slate-100 disabled:text-slate-500"
-                  />
-                  <span className="font-mono-tokens text-xs font-bold text-ink-mute">days</span>
+                <div className="flex items-center justify-between text-[11px] text-ink-mute pt-2 mt-2 border-t border-amber-200/60">
+                  <span className="text-[10px]">Cycle:</span>
+                  <strong className="font-mono text-amber-950 text-xs font-bold">20th → 19th</strong>
                 </div>
               </div>
             </div>
@@ -1497,7 +1404,7 @@ const AdminTokens = () => {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-700 border-b border-slate-200">
-                    <th className="py-2.5 px-3">User ID</th>
+                    <th className="py-2.5 px-3">Employee ID</th>
                     <th className="py-2.5 px-3">Name</th>
                     <th className="py-2.5 px-3">Shift</th>
                     <th className="py-2.5 px-3 text-right">Distributed</th>
@@ -1708,6 +1615,9 @@ const AdminTokens = () => {
                       const isExpanded = !!expandedCycles[cycle.cycle_start];
                       const isUserTableOpen = !!expandedUserTables[cycle.cycle_start];
                       const shifts = cycle.shift_breakdown || {};
+                      const isAllocated = cycle.status === 'Allocated' || cycle.status === 'approved';
+                      const isRejected = cycle.status === 'Rejected' || cycle.status === 'rejected';
+                      const isAutomatic = cycle.allocation_mode_raw === 'automatic' || cycle.allocation_mode === 'automatic';
 
                       return (
                         <tr key={cycle.cycle_start || idx} className="contents">
@@ -1724,11 +1634,11 @@ const AdminTokens = () => {
                             </td>
                             <td className="py-3 px-3">
                               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
-                                cycle.allocation_mode === 'automatic'
+                                isAutomatic
                                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                   : 'bg-amber-100 text-amber-800 border border-amber-200'
                               }`}>
-                                {cycle.allocation_mode || 'automatic'}
+                                {cycle.allocation_mode || cycle.allocation_mode_raw || 'automatic'}
                               </span>
                             </td>
                             <td className="py-3 px-3 font-bold text-slate-700">All Shifts</td>
@@ -1752,13 +1662,13 @@ const AdminTokens = () => {
                             </td>
                             <td className="py-3 px-3 text-center">
                               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black capitalize ${
-                                cycle.status === 'approved'
+                                isAllocated
                                   ? 'bg-emerald-100 text-emerald-800'
-                                  : cycle.status === 'rejected'
+                                  : isRejected
                                   ? 'bg-rose-100 text-rose-800'
                                   : 'bg-amber-100 text-amber-800'
                               }`}>
-                                {cycle.status === 'approved' ? 'Allocated' : cycle.status}
+                                {isAllocated ? 'Allocated' : cycle.status || 'Pending'}
                               </span>
                             </td>
                             <td className="py-3 px-3 text-slate-700">{cycle.approved_by || '—'}</td>
@@ -1850,7 +1760,7 @@ const AdminTokens = () => {
                                       <table className="w-full text-left text-xs">
                                         <thead>
                                           <tr className="bg-slate-100 text-[10px] font-bold uppercase text-slate-700">
-                                            <th className="py-2 px-3">User ID</th>
+                                            <th className="py-2 px-3">Employee ID</th>
                                             <th className="py-2 px-3">Diner Name</th>
                                             <th className="py-2 px-3">Shift</th>
                                             <th className="py-2 px-3 text-right">Tokens Credited</th>
@@ -2021,7 +1931,7 @@ const AdminTokens = () => {
                     {['day', 'mid', 'night'].map((sh) => {
                       const shData = proposal?.shift_breakdown?.[sh];
                       const shiftCfg = SHIFT_CONFIGS[`${sh}_shift`];
-                      const dinerCount = shData?.count ?? (tokenData[`${sh}_shift`]?.users?.length || 0);
+                      const dinerCount = shData?.users_count ?? (tokenData[`${sh}_shift`]?.users?.length || 0);
                       const currentQuota = approvalQuotas[sh];
                       const totalTokensForShift = (Number(currentQuota) || 0) * dinerCount;
 
@@ -2073,9 +1983,9 @@ const AdminTokens = () => {
                     </span>
                   </div>
                   <div className="font-mono-tokens text-xl sm:text-2xl font-black text-cobalt-950">
-                    {((Number(approvalQuotas.day) || 0) * (proposal?.shift_breakdown?.day?.count ?? (tokenData.day_shift?.users?.length || 0))) +
-                     ((Number(approvalQuotas.mid) || 0) * (proposal?.shift_breakdown?.mid?.count ?? (tokenData.mid_shift?.users?.length || 0))) +
-                     ((Number(approvalQuotas.night) || 0) * (proposal?.shift_breakdown?.night?.count ?? (tokenData.night_shift?.users?.length || 0)))}
+                {((Number(approvalQuotas.day) || 0) * (proposal?.shift_breakdown?.day?.users_count ?? (tokenData.day_shift?.users?.length || 0))) +
+                ((Number(approvalQuotas.mid) || 0) * (proposal?.shift_breakdown?.mid?.users_count ?? (tokenData.mid_shift?.users?.length || 0))) +
+                ((Number(approvalQuotas.night) || 0) * (proposal?.shift_breakdown?.night?.users_count ?? (tokenData.night_shift?.users?.length || 0)))}
                     <span className="text-xs font-normal text-cobalt-700 ml-1">tokens</span>
                   </div>
                 </div>
@@ -2365,7 +2275,7 @@ const AdminTokens = () => {
                       </span>
                     </div>
                     <p className="text-xs text-slate-300">
-                      User ID: {selectedUserForHistory.user_id || selectedUserForHistory.username} · Shift: {selectedUserForHistory.work_shift || selectedUserForHistory.shiftName || 'Day'}
+                      Employee ID: {selectedUserForHistory.user_id || selectedUserForHistory.username} · Shift: {selectedUserForHistory.work_shift || selectedUserForHistory.shiftName || 'Day'}
                     </p>
                   </div>
                 </div>
@@ -2455,6 +2365,232 @@ const AdminTokens = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Policy Quotas & Daily Limits Configuration Modal */}
+      <AnimatePresence>
+        {showPolicyModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white shadow-2xl overflow-hidden my-auto"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-5 py-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
+                    <SlidersHorizontal className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-ink">
+                      Edit Shift Quotas & Daily Limits
+                    </h3>
+                    <p className="text-xs text-ink-mute">
+                      Super Admin configurable default quotas and daily caps
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPolicyModal(false)}
+                  className="rounded-xl p-2 text-slate-400 hover:bg-slate-200/60 hover:text-ink transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Modal Form */}
+              <form onSubmit={handleSavePolicyModal} className="p-5 sm:p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+                {/* Monthly Quotas */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                      Monthly Policy Quotas (per Diner)
+                    </span>
+                    <span className="text-[11px] font-mono text-ink-mute">Monthly allowance</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Day Quota */}
+                    <div className="rounded-2xl border border-cobalt-200/70 bg-cobalt-50/30 p-3">
+                      <label className="flex items-center gap-1.5 text-xs font-bold text-cobalt-900 mb-1.5">
+                        <Sun className="h-3.5 w-3.5 text-cobalt-600" />
+                        Day Shift
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="5000"
+                          value={policyForm.day_shift_policy_quota}
+                          onChange={(e) => setPolicyForm(p => ({ ...p, day_shift_policy_quota: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-cobalt-500 shadow-2xs"
+                        />
+                        <span className="text-xs font-bold font-mono text-ink-mute">tk</span>
+                      </div>
+                    </div>
+
+                    {/* Mid Quota */}
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3">
+                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-1.5">
+                        <Sunset className="h-3.5 w-3.5 text-slate-600" />
+                        Mid Shift
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="5000"
+                          value={policyForm.mid_shift_policy_quota}
+                          onChange={(e) => setPolicyForm(p => ({ ...p, mid_shift_policy_quota: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-slate-500 shadow-2xs"
+                        />
+                        <span className="text-xs font-bold font-mono text-ink-mute">tk</span>
+                      </div>
+                    </div>
+
+                    {/* Night Quota */}
+                    <div className="rounded-2xl border border-slate-300 bg-slate-100/40 p-3">
+                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-1.5">
+                        <Moon className="h-3.5 w-3.5 text-slate-700" />
+                        Night Shift
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="5000"
+                          value={policyForm.night_shift_policy_quota}
+                          onChange={(e) => setPolicyForm(p => ({ ...p, night_shift_policy_quota: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0) }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-slate-500 shadow-2xs"
+                        />
+                        <span className="text-xs font-bold font-mono text-ink-mute">tk</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Shift-Wise Daily Spending Limits */}
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                      Shift-Wise Daily Spending Limits
+                    </span>
+                    <span className="text-[10px] font-mono text-ink-mute">06:00 → 06:00 AM window</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Day Daily Limit */}
+                    <div className="rounded-2xl border border-cobalt-200/70 bg-cobalt-50/30 p-3">
+                      <label className="flex items-center gap-1.5 text-xs font-bold text-cobalt-900 mb-1.5">
+                        <Sun className="h-3.5 w-3.5 text-cobalt-600" />
+                        Day Daily Limit
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="10000"
+                          value={policyForm.day_shift_daily_limit}
+                          onChange={(e) => setPolicyForm(p => ({ ...p, day_shift_daily_limit: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-cobalt-500 shadow-2xs"
+                        />
+                        <span className="text-xs font-bold font-mono text-ink-mute whitespace-nowrap">tk</span>
+                      </div>
+                    </div>
+
+                    {/* Mid Daily Limit */}
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3">
+                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-1.5">
+                        <Sunset className="h-3.5 w-3.5 text-slate-600" />
+                        Mid Daily Limit
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="10000"
+                          value={policyForm.mid_shift_daily_limit}
+                          onChange={(e) => setPolicyForm(p => ({ ...p, mid_shift_daily_limit: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-slate-500 shadow-2xs"
+                        />
+                        <span className="text-xs font-bold font-mono text-ink-mute whitespace-nowrap">tk</span>
+                      </div>
+                    </div>
+
+                    {/* Night Daily Limit */}
+                    <div className="rounded-2xl border border-slate-300 bg-slate-100/40 p-3">
+                      <label className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-1.5">
+                        <Moon className="h-3.5 w-3.5 text-slate-700" />
+                        Night Daily Limit
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="10000"
+                          value={policyForm.night_shift_daily_limit}
+                          onChange={(e) => setPolicyForm(p => ({ ...p, night_shift_daily_limit: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-slate-500 shadow-2xs"
+                        />
+                        <span className="text-xs font-bold font-mono text-ink-mute whitespace-nowrap">tk</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Monthly Reset Day */}
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                        <Calendar className="h-4 w-4 text-amber-700" />
+                        Monthly Reset Schedule Day
+                      </span>
+                      <p className="text-[11px] text-ink-mute mt-0.5">
+                        Billing cycle renewal day (e.g. 20th → 19th of next month)
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="number"
+                        min="1"
+                        max="28"
+                        value={policyForm.token_allocation_day}
+                        onChange={(e) => setPolicyForm(p => ({ ...p, token_allocation_day: e.target.value === '' ? '' : Math.max(1, Math.min(28, parseInt(e.target.value) || 20)) }))}
+                        className="w-24 rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono-tokens text-sm font-bold text-ink outline-none focus:border-amber-500 shadow-2xs"
+                      />
+                      <span className="text-xs font-bold font-mono text-ink-mute">of month</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowPolicyModal(false)}
+                    disabled={savingSettings}
+                    className="btn-tactile rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-ink hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingSettings}
+                    className="btn-tactile inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-5 py-2 text-xs font-bold text-white shadow-sm transition disabled:opacity-50 cursor-pointer"
+                  >
+                    <Save className="h-4 w-4" />
+                    <span>{savingSettings ? 'Saving...' : 'Save Policies & Limits'}</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };

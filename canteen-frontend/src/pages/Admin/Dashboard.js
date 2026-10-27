@@ -46,7 +46,6 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import SectionHeading from '../../components/canteen/SectionHeading';
 import VegBadge from '../../components/canteen/VegBadge';
-import OfficeKitchenModal from '../../components/canteen/OfficeKitchenModal';
 
 const spring = { type: 'spring', stiffness: 120, damping: 20 };
 
@@ -89,7 +88,6 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
-  const [showOfficeModal, setShowOfficeModal] = useState(false);
   
   // Dashboard Core Stats
   const [stats, setStats] = useState({ 
@@ -99,8 +97,7 @@ const AdminDashboard = () => {
     guests: 0, 
     newItems: 0, 
     todaysRevenue: 0, 
-    cycleData: null,
-    tokenResetReminder: null 
+    cycleData: null
   });
   
   const [shiftData, setShiftData] = useState({
@@ -168,7 +165,6 @@ const AdminDashboard = () => {
           newItems: d.newItemsThisWeek ?? 0,
           todaysRevenue: d.todaysRevenue ?? 0,
           cycleData: d.cycleData || null,
-          tokenResetReminder: d.tokenResetReminder || null,
         });
       }
 
@@ -266,19 +262,15 @@ const AdminDashboard = () => {
     { cycle_start: '2026-08-20', cycle_end: '2026-09-19', cycle_label: '20 Aug 2026 – 19 Sep 2026', is_current: false },
   ];
 
-  // Token Reset Reminder & Approval Status
-  const trr = stats.tokenResetReminder || {};
-  const isApproved = trr.is_approved ?? trr.approval_status?.is_approved ?? (cycle.tokens_allocated > 0);
-  const approvalStatus = trr.status || trr.approval_status || (cycle.tokens_allocated > 0 ? 'allocated' : 'draft');
-  const isResetDue = trr.reminder?.is_due ?? (cycle.days_remaining === 0);
-  const isReminderActive = trr.reminder?.is_active ?? false;
-  const resetDayNumber = trr.reminder?.token_allocation_day || cycle.allocation_day || 20;
+  // Cycle Status & Approval
+  const isApproved = (cycle.tokens_allocated > 0);
+  const resetDayNumber = cycle.allocation_day || 20;
 
   // Previous cycle metrics
   const pastSpent = cycle.past_cycle_spent ?? stats.cycleData?.pastCycleSpentTokens ?? 0;
   const pastAllocated = cycle.past_cycle_allocated ?? stats.cycleData?.pastCycleAllocatedTokens ?? 0;
   const pastUnused = cycle.past_cycle_unused ?? stats.cycleData?.pastCycleUnusedTokens ?? 0;
-  const eligiblePersonnelCount = (stats.employees || 0) + (stats.guests || 0);
+  const hasPreviousCycleData = pastSpent > 0 || pastAllocated > 0 || pastUnused > 0;
 
   // Sorting helper
   const handleSort = (field) => {
@@ -419,14 +411,6 @@ const AdminDashboard = () => {
         right={
           <div className="flex flex-wrap items-center gap-2">
             <button 
-              onClick={() => setShowOfficeModal(true)} 
-              className="btn-tactile inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-900 shadow-2xs hover:bg-indigo-100 transition-colors"
-              title="Manage company offices and automatic kitchen pairings"
-            >
-              <Building2 className="h-3.5 w-3.5 text-indigo-700" strokeWidth={2} />
-              Offices & Kitchens
-            </button>
-            <button 
               onClick={() => setShowExportModal(true)} 
               className="btn-tactile inline-flex items-center gap-1.5 rounded-xl border border-cobalt-200 bg-cobalt-50 px-3.5 py-2 text-xs font-bold text-cobalt-900 shadow-2xs hover:bg-cobalt-100 transition-colors"
             >
@@ -444,24 +428,19 @@ const AdminDashboard = () => {
       />
 
       {/* ------------------------------------------------------------- */}
-      {/* SECTION 2: REDESIGNED MONTHLY TOKEN CYCLE BANNER               */}
+      {/* ACTIVE MONTHLY TOKEN CYCLE OVERVIEW                           */}
       {/* ------------------------------------------------------------- */}
       <motion.div
         initial={{ opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
         className="rounded-3xl border border-slate-200/90 bg-white p-5 shadow-card transition-all relative overflow-hidden"
       >
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-3">
-            {/* Status & Cycle Badges */}
-            <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide border ${
                 cycle.tokens_allocated > 0 || isApproved
                   ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                  : isResetDue
-                  ? 'bg-rose-50 text-rose-900 border-rose-300 animate-pulse'
-                  : isReminderActive
-                  ? 'bg-amber-50 text-amber-900 border-amber-300'
                   : 'bg-cobalt-50 text-cobalt-900 border-cobalt-200'
               }`}>
                 {cycle.tokens_allocated > 0 ? (
@@ -469,167 +448,95 @@ const AdminDashboard = () => {
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                     Allocated & Active
                   </>
-                ) : isApproved ? (
-                  <>
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                    Approved by Super Admin
-                  </>
-                ) : isResetDue ? (
-                  <>
-                    <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
-                    Awaiting Approval (Due Today)
-                  </>
                 ) : (
                   <>
                     <Coins className="h-3.5 w-3.5 text-cobalt-600" />
-                    Draft / Scheduled
+                    Quotas Scheduled
                   </>
                 )}
               </span>
 
-              <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-                Billing Cycle: <strong className="text-ink font-semibold">{cycleStartFormatted} – {cycleEndFormatted}</strong>
+              <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                Cycle: <strong className="text-ink font-semibold">{cycleStartFormatted} – {cycleEndFormatted}</strong>
               </span>
 
               <span className="text-xs font-mono text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
-                Reset Policy: <strong className="text-ink">Day {resetDayNumber}</strong> · Next Allocation: <strong className="text-cobalt-800">{nextAllocationFormatted}</strong>
+                Day {cycle.days_elapsed || 1} of {cycle.total_days || 31} · Next Reset: <strong className="text-cobalt-800">{nextAllocationFormatted}</strong>
               </span>
             </div>
 
-            {/* Description */}
-            <div>
-              <h2 className="text-base font-extrabold text-ink tracking-tight flex items-center gap-2">
-                Monthly Token Cycle: {cycleStartFormatted} – {cycleEndFormatted}
-              </h2>
-              <p className="text-xs text-ink-mute max-w-3xl mt-0.5 leading-relaxed">
-                Tokens govern cafeteria spending for active personnel across Day, Mid, and Night shifts. 
-                {cycle.tokens_allocated > 0 
-                  ? ` Wallets are credited with ${cycle.tokens_allocated.toLocaleString()} tokens for the current cycle.`
-                  : ' Quotas are calculated automatically and credited strictly upon Super Admin review and authorization.'}
-              </p>
-            </div>
-
-            {/* Previous Cycle Metrics & Headcount Strip */}
-            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-              <span className="text-xs font-bold text-ink-mute">Previous Cycle:</span>
-              <span className="rounded-lg bg-paper px-2.5 py-1 font-mono text-slate-700 border border-slate-200">
-                Consumption: <strong className="text-emerald-800">{pastSpent?.toLocaleString() ?? 0} tk</strong>
-              </span>
-              <span className="rounded-lg bg-paper px-2.5 py-1 font-mono text-slate-700 border border-slate-200">
-                Allocation: <strong className="text-cobalt-800">{pastAllocated?.toLocaleString() ?? 0} tk</strong>
-              </span>
-              <span className="rounded-lg bg-paper px-2.5 py-1 font-mono text-slate-700 border border-slate-200">
-                Unused / Expired: <strong className="text-amber-800">{pastUnused?.toLocaleString() ?? 0} tk</strong>
-              </span>
-              <span className="rounded-lg bg-paper px-2.5 py-1 font-mono text-slate-700 border border-slate-200">
-                Eligible Diners: <strong className="text-purple-800">{eligiblePersonnelCount}</strong>
-              </span>
-            </div>
+            <h2 className="text-base font-extrabold text-ink tracking-tight">
+              Monthly Cafeteria Token Cycle
+            </h2>
           </div>
 
-          {/* Action CTAs */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => navigate('/admin/tokens')}
-              className={`btn-tactile inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all shadow-md ${
-                cycle.tokens_allocated > 0
-                  ? 'bg-cobalt-800 text-white hover:bg-cobalt-900'
-                  : 'bg-amber-600 text-white hover:bg-amber-700'
-              }`}
+              className="btn-tactile inline-flex items-center gap-2 rounded-xl bg-cobalt-800 text-white px-4 py-2 text-xs font-bold shadow-sm hover:bg-cobalt-900 transition-colors"
             >
               <Coins className="h-4 w-4" />
-              {cycle.tokens_allocated > 0 ? 'View Token Allocations' : 'Review & Approve Reset'}
+              Manage Token Quotas
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={() => setActiveReportTab('history')}
-              className="btn-tactile inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+              className="btn-tactile inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
             >
               <History className="h-3.5 w-3.5" />
               Cycle History
             </button>
           </div>
         </div>
-      </motion.div>
 
-      {/* ------------------------------------------------------------- */}
-      {/* SECTION 3: ACTIVE CYCLE SUMMARY CARD                           */}
-      {/* ------------------------------------------------------------- */}
-      <motion.div
-        initial={{ opacity: 0, y: -6 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-3xl border border-cobalt-200/90 bg-gradient-to-r from-cobalt-950 via-slate-900 to-indigo-950 p-5 text-white shadow-card"
-      >
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-cobalt-500/30 text-cobalt-200">
-                <Sparkles className="h-3.5 w-3.5" />
-              </span>
-              <span className="font-mono text-xs font-bold uppercase tracking-wider text-cobalt-300">
-                Active Cycle Schedule & Utilization
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h3 className="text-lg font-black text-white tracking-tight">
-                {cycleStartFormatted} – {cycleEndFormatted}
-              </h3>
-              <span className="rounded-full bg-cobalt-500/30 px-3 py-0.5 text-xs font-mono font-bold text-cobalt-200 border border-cobalt-400/30">
-                Day {cycle.days_elapsed || 1} of {cycle.total_days || 31}
-              </span>
-              <span className="rounded-lg bg-white/10 px-2.5 py-0.5 text-xs font-mono text-slate-300 border border-white/10">
-                Last Allocation: <strong className="text-white">{lastAllocatedFormatted}</strong>
-              </span>
-              <span className="rounded-lg bg-white/10 px-2.5 py-0.5 text-xs font-mono text-slate-300 border border-white/10">
-                Next Allocation: <strong className="text-white">{nextAllocationFormatted}</strong>
-              </span>
-            </div>
-
-            <p className="text-xs text-cobalt-200/90 max-w-2xl">
-              Next token allocation is scheduled on <strong className="text-white font-mono">{nextAllocationFormatted}</strong> ({cycle.days_remaining} days remaining). 
-              Daily average consumption velocity is <strong className="text-white font-mono">{cycle.burn_rate} tokens/day</strong>.
-            </p>
+        {/* 4 Clean Metric Blocks */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4">
+          <div className="rounded-2xl bg-paper border border-slate-200/80 p-3.5 text-center">
+            <span className="text-[11px] font-mono text-ink-mute uppercase tracking-wider block">Allocated Quota</span>
+            <span className="font-mono text-xl font-black text-ink mt-0.5 block">
+              {cycle.tokens_allocated > 0 ? cycle.tokens_allocated.toLocaleString() : (cycle.proposed_tokens_allocated?.toLocaleString() || '0')}
+            </span>
+            <span className="text-[10px] text-ink-mute block">tokens for current cycle</span>
           </div>
 
-          {/* Quick Real-Time Metrics Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
-            <div className="rounded-2xl bg-white/10 border border-white/10 p-3 text-center">
-              <span className="text-[10px] font-mono text-cobalt-200 uppercase tracking-wider block">Allocated</span>
-              <span className="font-mono text-lg font-black text-white">{cycle.tokens_allocated?.toLocaleString() ?? 0}</span>
-              <span className="text-[10px] text-cobalt-300 block">tokens credited</span>
-            </div>
-            <div className="rounded-2xl bg-white/10 border border-white/10 p-3 text-center">
-              <span className="text-[10px] font-mono text-cobalt-200 uppercase tracking-wider block">Spent</span>
-              <span className="font-mono text-lg font-black text-emerald-400">{cycle.total_revenue_tokens?.toLocaleString() ?? 0}</span>
-              <span className="text-[10px] text-cobalt-300 block">tokens consumed</span>
-            </div>
-            <div className="rounded-2xl bg-white/10 border border-white/10 p-3 text-center">
-              <span className="text-[10px] font-mono text-cobalt-200 uppercase tracking-wider block">Remaining</span>
-              <span className="font-mono text-lg font-black text-indigo-300">{cycle.tokens_remaining?.toLocaleString() ?? 0}</span>
-              <span className="text-[10px] text-cobalt-300 block">spendable balance</span>
-            </div>
-            <div className="rounded-2xl bg-white/10 border border-white/10 p-3 text-center">
-              <span className="text-[10px] font-mono text-cobalt-200 uppercase tracking-wider block">Utilization</span>
-              <span className="font-mono text-lg font-black text-amber-300">{cycle.utilization_pct}%</span>
-              <span className="text-[10px] text-cobalt-300 block">active burn</span>
-            </div>
+          <div className="rounded-2xl bg-emerald-50/50 border border-emerald-200/80 p-3.5 text-center">
+            <span className="text-[11px] font-mono text-emerald-800 uppercase tracking-wider block">Total Spent</span>
+            <span className="font-mono text-xl font-black text-emerald-950 mt-0.5 block">
+              {cycle.total_revenue_tokens?.toLocaleString() ?? 0}
+            </span>
+            <span className="text-[10px] text-emerald-800 block">{cycle.total_orders_count ?? 0} counter orders</span>
+          </div>
+
+          <div className="rounded-2xl bg-paper border border-slate-200/80 p-3.5 text-center">
+            <span className="text-[11px] font-mono text-ink-mute uppercase tracking-wider block">Remaining Balance</span>
+            <span className="font-mono text-xl font-black text-ink mt-0.5 block">
+              {cycle.tokens_remaining?.toLocaleString() ?? 0}
+            </span>
+            <span className="text-[10px] text-ink-mute block">spendable balance</span>
+          </div>
+
+          <div className="rounded-2xl bg-cobalt-50/50 border border-cobalt-200/80 p-3.5 text-center">
+            <span className="text-[11px] font-mono text-cobalt-800 uppercase tracking-wider block">Cycle Utilization</span>
+            <span className="font-mono text-xl font-black text-cobalt-950 mt-0.5 block">
+              {cycle.utilization_pct}%
+            </span>
+            <span className="text-[10px] text-cobalt-700 block">Avg: {cycle.burn_rate} tk/day</span>
           </div>
         </div>
 
-        {/* Cycle Progress Bar */}
-        <div className="mt-4 pt-3 border-t border-white/10">
-          <div className="flex items-center justify-between text-[11px] font-mono text-cobalt-200 mb-1.5">
-            <span>Cycle Start: {cycleStartFormatted}</span>
-            <span>Cycle Progress: Day {cycle.days_elapsed} of {cycle.total_days} ({Math.round(((cycle.days_elapsed || 1) / (cycle.total_days || 31)) * 100)}%)</span>
-            <span>Next Reset: {nextAllocationFormatted}</span>
+        {/* Sleek Cycle Timeline Progress Bar */}
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between text-[11px] font-mono text-ink-mute mb-1.5">
+            <span>Started: {cycleStartFormatted}</span>
+            <span className="font-semibold text-ink">Cycle Progress: Day {cycle.days_elapsed} of {cycle.total_days} ({Math.round(((cycle.days_elapsed || 1) / (cycle.total_days || 31)) * 100)}%)</span>
+            <span>Next Renewal: {nextAllocationFormatted}</span>
           </div>
-          <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+          <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${Math.min(100, Math.round(((cycle.days_elapsed || 1) / (cycle.total_days || 31)) * 100))}%` }}
               transition={{ duration: 0.8 }}
-              className="h-full bg-gradient-to-r from-cobalt-400 to-emerald-400 rounded-full"
+              className="h-full bg-gradient-to-r from-cobalt-600 to-emerald-500 rounded-full"
             />
           </div>
         </div>
@@ -933,10 +840,10 @@ const AdminDashboard = () => {
           <div>
             <h3 className="text-base font-bold text-ink flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5 text-cobalt-600" />
-              Monthly Pre-Allocation Audit & Reporting Hub
+              Monthly Audit & Transaction Records
             </h3>
             <p className="text-xs text-ink-mute">
-              Pre-allocation transaction logs, token allocations, and monthly reset history
+              Real-time order transaction logs, token allocations, and billing cycle history
             </p>
           </div>
 
@@ -1031,8 +938,8 @@ const AdminDashboard = () => {
                 type="text"
                 placeholder={
                   activeReportTab === 'transactions' 
-                    ? "Search order #, user ID, name, items…"
-                    : (activeReportTab === 'allocations' ? "Search user ID, employee name…" : "Search cycle, approver, notes…")
+                    ? "Search order #, employee ID, name, items…"
+                    : (activeReportTab === 'allocations' ? "Search employee ID, name…" : "Search cycle, approver, notes…")
                 }
                 value={reportSearch}
                 onChange={(e) => setReportSearch(e.target.value)}
@@ -1126,7 +1033,7 @@ const AdminDashboard = () => {
                     <th className="py-2.5 px-3 cursor-pointer hover:text-ink" onClick={() => handleSort('date')}>
                       <div className="flex items-center gap-1">Date & Time (IST) <ArrowUpDown className="h-3 w-3" /></div>
                     </th>
-                    <th className="py-2.5 px-3">User ID</th>
+                    <th className="py-2.5 px-3">Employee ID</th>
                     <th className="py-2.5 px-3 cursor-pointer hover:text-ink" onClick={() => handleSort('name')}>
                       <div className="flex items-center gap-1">Diner Name <ArrowUpDown className="h-3 w-3" /></div>
                     </th>
@@ -1188,7 +1095,7 @@ const AdminDashboard = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-paper text-[11px] font-bold uppercase tracking-wider text-ink-mute">
-                    <th className="py-2.5 px-3">User ID</th>
+                    <th className="py-2.5 px-3">Employee ID</th>
                     <th className="py-2.5 px-3 cursor-pointer hover:text-ink" onClick={() => handleSort('name')}>
                       <div className="flex items-center gap-1">Employee Name <ArrowUpDown className="h-3 w-3" /></div>
                     </th>
@@ -1449,9 +1356,11 @@ const AdminDashboard = () => {
                     onChange={(e) => setExportReportType(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-cobalt-500"
                   >
-                    <option value="all">Full Report (Executive Summary + Token Allocations + Transactions)</option>
-                    <option value="transactions">Total Transactions Details Only</option>
-                    <option value="allocations">Token Allocated Details Only</option>
+                    <option value="all">Full Comprehensive Audit (Summary + Token Allocations + Transactions + Menu)</option>
+                    <option value="transactions">All Transactions & Orders Log</option>
+                    <option value="allocations">User Token Allocations & Diners Quotas</option>
+                    <option value="menu">Kitchen Food Menu Catalogs & Pricing</option>
+                    <option value="system_audit">System Token Reset & Policy Audit Logs</option>
                   </select>
                 </div>
 
@@ -1502,13 +1411,6 @@ const AdminDashboard = () => {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Office & Kitchen Management Modal */}
-      <OfficeKitchenModal
-        isOpen={showOfficeModal}
-        onClose={() => setShowOfficeModal(false)}
-        onOfficeUpdated={fetchDashboardData}
-      />
     </div>
   );
 };

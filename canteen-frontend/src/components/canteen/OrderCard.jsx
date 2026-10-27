@@ -65,7 +65,7 @@ const OrderCard = memo(function OrderCard({ order, index, api, onOrderCancelled 
   const getStatusMessage = () => {
     if (order.status === 'approved') {
       return {
-        text: 'Order Accepted by Kitchen · Preparing',
+        text: 'Order Accepted · Preparing',
         cls: 'text-emerald-900 bg-emerald-50 border-emerald-200',
         Icon: CheckCircle2,
       };
@@ -92,7 +92,7 @@ const OrderCard = memo(function OrderCard({ order, index, api, onOrderCancelled 
       };
     }
     return {
-      text: 'Order Placed · Awaiting Kitchen acceptance',
+      text: 'Order Placed · Awaiting acceptance',
       cls: 'text-amber-900 bg-amber-50 border-amber-200',
       Icon: Clock,
     };

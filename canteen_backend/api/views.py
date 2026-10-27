@@ -380,9 +380,8 @@ def login_view(request):
     is_remember = remember_me in [True, 'true', 'True', 1, '1']
     if not is_remember:
         request.session.set_expiry(0)
-    response = Response({
+    user_payload = {
         'id': user.id,
-
         'email': user.email,
         'username': user.username,
         'name': user.get_full_name() or user.username,
@@ -391,11 +390,14 @@ def login_view(request):
         'role': user.role,
         'work_shift': user.work_shift,
         'user_id': user.user_id,
-        'tokens': user.current_tokens() if user.role not in ['admin', 'staff', 'staff_admin'] else 0,
-        'monthly_tokens': user.monthly_tokens,
         'is_staff': user.is_staff,
         'is_superuser': user.is_superuser,
-    })
+    }
+    if user.role in ['employee', 'guest']:
+        user_payload['tokens'] = user.current_tokens()
+        user_payload['monthly_tokens'] = user.monthly_tokens
+
+    response = Response(user_payload)
     
     # Set session cookie (namespaced name; SessionMiddleware also sets this on login())
     # Adaptive cookie security: when running over HTTP (local dev), secure=False and samesite='Lax'
@@ -1351,6 +1353,9 @@ class StaffOrderViewSet(viewsets.ModelViewSet):
             refunded = False
             if new_status == 'declined':
                 refunded = order.refund_tokens()
+            elif new_status in ['approved', 'completed']:
+                if request.user.is_authenticated and not order.accepted_by:
+                    order.accepted_by = request.user
 
             order.status = new_status
             order.save()
@@ -1418,36 +1423,20 @@ def employee_menu(request):
 
 def _get_shift_boundary_start(user, now_kolkata, mode='shift_based'):
     """
-    Computes shift-based quota reset boundary for Asia/Kolkata:
-    Day Shift: 06:00:00 IST
-    Mid Shift: 14:00:00 IST
-    Night Shift: 22:00:00 IST (handles spanning midnight)
+    Computes 24-hour Canteen Operational Day reset boundary for Asia/Kolkata:
+    06:00:00 AM IST to next day 06:00:00 AM IST.
+    Accommodates Day, Mid, and especially Night Shift (6:00 PM to 4:00 AM)
+    so night shift workers operate under a single continuous per-day spending limit
+    without having their limit split or reset at midnight.
     """
     tz = ZoneInfo("Asia/Kolkata")
-    if mode == 'daily_window':
-        return datetime.combine(now_kolkata.date(), time.min).replace(tzinfo=tz)
-
-    shift = (getattr(user, 'work_shift', None) or 'day').lower()
     today = now_kolkata.date()
-    yesterday = today - timedelta(days=1)
-
-    if shift == 'mid':
-        shift_start = datetime.combine(today, time(14, 0)).replace(tzinfo=tz)
-        if now_kolkata < shift_start:
-            shift_start = datetime.combine(yesterday, time(14, 0)).replace(tzinfo=tz)
-        return shift_start
-    elif shift == 'night':
-        if now_kolkata.hour < 6:
-            return datetime.combine(yesterday, time(22, 0)).replace(tzinfo=tz)
-        elif now_kolkata.hour >= 22:
-            return datetime.combine(today, time(22, 0)).replace(tzinfo=tz)
-        else:
-            return datetime.combine(yesterday, time(22, 0)).replace(tzinfo=tz)
+    if now_kolkata.hour >= 6:
+        return datetime.combine(today, time(6, 0)).replace(tzinfo=tz)
     else:
-        shift_start = datetime.combine(today, time(6, 0)).replace(tzinfo=tz)
-        if now_kolkata < shift_start:
-            shift_start = datetime.combine(yesterday, time(6, 0)).replace(tzinfo=tz)
-        return shift_start
+        yesterday = today - timedelta(days=1)
+        return datetime.combine(yesterday, time(6, 0)).replace(tzinfo=tz)
+
 
 
 def _process_order_placement(request):
@@ -3360,22 +3349,42 @@ class CompanyBillViewSet(viewsets.ModelViewSet):
         })
 
 
-# Monthly Audit & Pre-Allocation Report (Total Transactions Details + Token Allocated Details)
+# Role-based Corporate Audit & Hierarchy Reporting Engine
 @api_view(['GET'])
-@permission_classes([IsStaffAdminOrAdmin])
+@permission_classes([IsStaffOrAdmin])
 @renderer_classes([CSVExportRenderer, XLSXExportRenderer, PDFExportRenderer, JSONRenderer])
 def audit_export_view(request):
     """
-    Exports full monthly audit data for the cycle (configured token reset day prev month -> day prior current month).
-    Generates:
-      1. Executive Analytics & Summary
-      2. Token Allocated Details (per employee/guest)
-      3. Total Transactions Details (itemized order ledger)
-    Supports xlsx (multi-sheet), csv, pdf, and json formats.
-    Sanitizes against CSV/formula injection.
+    Role-based Audit Log & Report Export Engine:
+      - Admin (Super Admin): Full ownership to download every log generated across the project:
+          1. Comprehensive Executive Audit (Executive KPI Summary, All Diner Token Allocations, All Transactions, Menu Catalog)
+          2. Complete Token Allocations Log (all diner shifts, monthly quotas, spent, remaining, utilization)
+          3. Total Cafeteria Transactions (all orders, itemized dishes, kitchen locations, accepted by staff)
+          4. Kitchen Food Menu Catalogs & Pricing (all kitchens)
+          5. Company Financial Transactions & Ledger (adjustments, billings, settlements)
+          6. System Audit Logs (Token reset approvals, allocation audit logs, mode changes)
+      - Staff Admin: Limited strictly to their assigned office / kitchen hierarchy:
+          1. Kitchen Food Transactions & Orders Log (orders processed in their kitchen/office, including staff who accepted each order)
+          2. Kitchen Food Menu & Dish Audit Log (all dishes in their kitchen hierarchy, prices, veg/non-veg status, availability)
+          3. Office Diners Token Consumption Summary (spending within their office)
+      - Staff: Limited strictly to their own activity & kitchen hierarchy:
+          1. Staff Accepted & Fulfilled Transactions (orders accepted/completed by this specific staff member)
+          2. Kitchen Food Menu Log (dishes in their assigned kitchen)
+    Supports xlsx (multi-sheet), csv, pdf, and json formats. Sanitizes against formula injection.
     """
     kolkata_tz = ZoneInfo("Asia/Kolkata")
     now_kolkata = timezone.now().astimezone(kolkata_tz)
+
+    user = request.user
+    role = getattr(user, 'role', 'guest')
+    is_admin = role == 'admin' or user.is_superuser
+    is_staff_admin = role == 'staff_admin'
+    is_staff = role == 'staff'
+
+    user_kitchen = user.get_kitchen() if hasattr(user, 'get_kitchen') else None
+    user_office = getattr(user, 'office', None) or (user_kitchen.office if user_kitchen else None)
+    kitchen_name = user_kitchen.name if user_kitchen else (user_office.name if user_office else "All Kitchens")
+    office_name = user_office.name if user_office else "All Offices"
 
     query_params = getattr(request, 'query_params', request.GET)
     year = int(query_params.get('year', now_kolkata.year))
@@ -3383,12 +3392,18 @@ def audit_export_view(request):
     fmt = (query_params.get('export_format') or query_params.get('format') or 'csv').lower()
     report_type = (query_params.get('report_type') or 'all').lower()
 
-    if month == 1:
-        prev_year = year - 1
-        prev_month = 12
-    else:
-        prev_year = year
-        prev_month = month - 1
+    # Role-based permission enforcement for sensitive global reports
+    if is_staff and report_type in ['allocations', 'financial_ledger', 'system_audit']:
+        return Response(
+            {'error': 'Permission denied: Staff members can only download food transactions and kitchen menu audit logs.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if is_staff_admin and report_type in ['financial_ledger', 'system_audit']:
+        return Response(
+            {'error': 'Permission denied: Only Administrators have ownership to download company-wide financial and system audit logs.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
 
     start_date_param = query_params.get('start_date')
     end_date_param = query_params.get('end_date')
@@ -3439,10 +3454,41 @@ def audit_export_view(request):
     reset_date_str = actual_reset_date.strftime('%d %b %Y') if actual_reset_date else 'Scheduled on Reset Day'
     approved_by_user = cycle_approval.approved_by.username if (cycle_approval and cycle_approval.approved_by) else 'Administrator'
 
+    # Formula injection defense helper
+    def sanitize(val):
+        s = str(val if val is not None else '')
+        if s.startswith(('=', '+', '-', '@', '\t', '\r')):
+            return f"'{s}"
+        return s
+
+    # 1. SCOPING ORDERS
     orders = Order.objects.filter(
         created_at__date__gte=period_start,
         created_at__date__lte=period_end
-    ).select_related('user').prefetch_related('order_items__menu_item').order_by('created_at')
+    ).select_related('user', 'kitchen', 'kitchen__office', 'accepted_by').prefetch_related('order_items__menu_item').order_by('-created_at')
+
+    # Apply role scoping
+    if is_admin:
+        kitchen_id_param = query_params.get('kitchen_id')
+        if kitchen_id_param:
+            orders = orders.filter(kitchen_id=kitchen_id_param)
+    elif is_staff_admin:
+        # Limited to food transactions processed in their kitchen / office hierarchy
+        if user_kitchen:
+            orders = orders.filter(kitchen=user_kitchen)
+        elif user_office:
+            orders = orders.filter(kitchen__office=user_office)
+        else:
+            orders = orders.none()
+    elif is_staff:
+        # Staff: orders accepted by this staff member, or in their kitchen
+        if report_type == 'staff_accepted' or query_params.get('my_orders_only') == 'true':
+            orders = orders.filter(accepted_by=user)
+        else:
+            if user_kitchen:
+                orders = orders.filter(Q(accepted_by=user) | Q(kitchen=user_kitchen))
+            else:
+                orders = orders.filter(accepted_by=user)
 
     # Apply query filters for shift, status, and search
     shift_param = (query_params.get('shift') or '').strip().lower()
@@ -3457,7 +3503,6 @@ def audit_export_view(request):
         orders = orders.filter(status=status_param)
 
     if search_param:
-        from django.db.models import Q
         orders = orders.filter(
             Q(user__username__icontains=search_param) |
             Q(user__user_id__icontains=search_param) |
@@ -3468,24 +3513,43 @@ def audit_export_view(request):
 
     completed_orders = orders.filter(status='completed')
 
-    # Formula injection defense helper
-    def sanitize(val):
-        s = str(val if val is not None else '')
-        if s.startswith(('=', '+', '-', '@', '\t', '\r')):
-            return f"'{s}"
-        return s
+    # 2. SCOPING MENU ITEMS (For Kitchen Food Menu Audit)
+    menu_items = MenuItem.objects.filter(is_deleted=False).select_related('kitchen', 'kitchen__office').order_by('category', 'name')
+    if is_admin:
+        kitchen_id_param = query_params.get('kitchen_id')
+        if kitchen_id_param:
+            menu_items = menu_items.filter(kitchen_id=kitchen_id_param)
+    else:
+        if user_kitchen:
+            menu_items = menu_items.filter(kitchen=user_kitchen)
+        elif user_office:
+            menu_items = menu_items.filter(kitchen__office=user_office)
+        else:
+            menu_items = menu_items.none()
 
-    # 1. Calculate Token Allocation details for all active diners in this cycle
-    active_users = CustomUser.objects.filter(
-        role__in=['employee', 'guest'],
-        is_deleted=False
-    ).order_by('work_shift', 'username')
+    # 3. SCOPING TOKEN ALLOCATIONS
+    if is_admin:
+        active_users = CustomUser.objects.filter(
+            role__in=['employee', 'guest'],
+            is_deleted=False
+        ).order_by('work_shift', 'username')
+    elif is_staff_admin:
+        active_users = CustomUser.objects.filter(
+            role__in=['employee', 'guest'],
+            is_deleted=False
+        )
+        if user_office:
+            active_users = active_users.filter(office=user_office)
+        elif user_kitchen and user_kitchen.office:
+            active_users = active_users.filter(office=user_kitchen.office)
+        active_users = active_users.order_by('work_shift', 'username')
+    else:
+        active_users = CustomUser.objects.none()
 
     if shift_param and shift_param != 'all':
         active_users = active_users.filter(work_shift=shift_param.replace('_shift', ''))
 
-    if search_param:
-        from django.db.models import Q
+    if search_param and active_users.exists():
         active_users = active_users.filter(
             Q(username__icontains=search_param) |
             Q(user_id__icontains=search_param) |
@@ -3571,6 +3635,13 @@ def audit_export_view(request):
         category_summary[cat]['count'] += it.quantity
         category_summary[cat]['tokens'] += it.total_tokens
 
+    # Helper for Accepted By Display
+    def get_accepted_by_str(order_obj):
+        if order_obj.accepted_by:
+            return order_obj.accepted_by.get_full_name() or order_obj.accepted_by.username
+        return "Counter / Unassigned"
+
+    # 4. JSON EXPORT
     if fmt == 'json':
         transactions_data = []
         for o in orders:
@@ -3584,6 +3655,9 @@ def audit_export_view(request):
                 'shift': o.user.work_shift,
                 'status': o.status,
                 'total_tokens': o.total_tokens,
+                'kitchen_name': o.kitchen.name if o.kitchen else 'Main Kitchen',
+                'office_name': o.kitchen.office.name if (o.kitchen and o.kitchen.office) else 'HQ',
+                'accepted_by': get_accepted_by_str(o),
                 'items_count': sum(it.quantity for it in o.order_items.all()),
                 'items': [
                     {
@@ -3596,7 +3670,20 @@ def audit_export_view(request):
                 ]
             })
 
-        # Available cycles: past 12 cycles from current date
+        menu_items_data = [
+            {
+                'id': m.id,
+                'name': m.name,
+                'category': m.category,
+                'is_veg': m.is_veg,
+                'food_type': m.food_type,
+                'price': m.price,
+                'price_inr': float(m.price_inr or 0),
+                'is_available': m.is_available,
+                'kitchen_name': m.kitchen.name if m.kitchen else 'Main Kitchen',
+            } for m in menu_items
+        ]
+
         avail_cycles = []
         cur_cycle = get_billing_cycle_dates(now_kolkata.date())
         temp_date = cur_cycle['cycle_start']
@@ -3611,6 +3698,10 @@ def audit_export_view(request):
             temp_date = c_info_item['prev_cycle_start']
 
         return Response({
+            'role': role,
+            'scope': 'all' if is_admin else ('kitchen' if is_staff_admin else 'staff'),
+            'kitchen_name': kitchen_name,
+            'office_name': office_name,
             'period_start': period_start.isoformat(),
             'period_end': period_end.isoformat(),
             'token_reset_day': reset_day,
@@ -3628,17 +3719,16 @@ def audit_export_view(request):
                 'active_diners_count': len(token_allocations_data),
                 'shift_summary': shift_summary,
                 'category_summary': category_summary,
-                'token_reset_day': reset_day,
-                'actual_reset_date': actual_reset_date.strftime('%Y-%m-%d') if actual_reset_date else None,
-                'approved_by': approved_by_user,
             },
-            'token_allocations': token_allocations_data,
+            'token_allocations': token_allocations_data if not is_staff else [],
             'orders_count': len(transactions_data),
             'orders': transactions_data,
             'transactions': transactions_data,
+            'menu_items': menu_items_data,
             'available_cycles': avail_cycles
         })
 
+    # 5. EXCEL (XLSX) EXPORT
     elif fmt == 'xlsx':
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -3649,7 +3739,7 @@ def audit_export_view(request):
         header_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
         header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
         sub_header_fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
-        title_font = Font(name="Calibri", size=16, bold=True, color="1E3A8A")
+        title_font = Font(name="Calibri", size=15, bold=True, color="1E3A8A")
         subtitle_font = Font(name="Calibri", size=10, italic=True, color="475569")
         bold_font = Font(name="Calibri", size=11, bold=True, color="0F172A")
         regular_font = Font(name="Calibri", size=10, color="0F172A")
@@ -3664,23 +3754,20 @@ def audit_export_view(request):
         )
         zebra_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
 
-        # -------------------------------------------------------------
-        # SHEET 1: Executive Analytics & Summary
-        # -------------------------------------------------------------
+        # SHEET 1: Executive Summary / Context
         ws_sum = wb.active
         ws_sum.title = "Executive Summary"
         ws_sum.views.sheetView[0].showGridLines = True
 
-        ws_sum["A1"] = "VDart Cafe — Monthly Executive Analytics & Token Audit"
+        ws_sum["A1"] = f"VDart Cafe — {'Corporate Audit & Revenue' if is_admin else ('Kitchen Operations & Audit' if is_staff_admin else 'Staff Transactions & Activity')}"
         ws_sum["A1"].font = title_font
-        ws_sum["A2"] = f"Cycle Period: {period_start.strftime('%d %b %Y')} to {period_end.strftime('%d %b %Y')} (Token Reset Day: {reset_day}) | Actual Reset Date: {reset_date_str} | Approved By: {approved_by_user} | Generated: {now_kolkata.strftime('%Y-%m-%d %H:%M:%S IST')}"
+        ws_sum["A2"] = f"Scope: {office_name} | {kitchen_name} | Role: {role.upper()} | Period: {period_start.strftime('%d %b %Y')} to {period_end.strftime('%d %b %Y')} | Generated: {now_kolkata.strftime('%Y-%m-%d %H:%M:%S IST')}"
         ws_sum["A2"].font = subtitle_font
 
-        # Key Metrics Table
-        ws_sum["A4"] = "KEY REVENUE & TOKEN METRICS"
+        ws_sum["A4"] = "OPERATIONAL & REVENUE AUDIT SUMMARY"
         ws_sum["A4"].font = bold_font
 
-        kpi_headers = ["Metric", "Value", "Units / Notes"]
+        kpi_headers = ["Metric", "Value", "Notes"]
         ws_sum.append([])
         row_idx = 5
         for col_idx, h in enumerate(kpi_headers, 1):
@@ -3690,15 +3777,19 @@ def audit_export_view(request):
             cell.alignment = center_align
 
         kpis = [
-            ("Monthly Token Reset Schedule", f"Day {reset_day} of each month", f"Cycle reset day configured by Super Admin"),
-            ("Actual Token Reset Execution", reset_date_str, f"Approved & distributed by {approved_by_user}"),
-            ("Total Tokens Allocated", total_tokens_allocated, "Tokens credited to employee/guest wallets for this cycle"),
-            ("Cycle Revenue (Tokens Spent)", total_tokens_spent, "Total cafeteria tokens redeemed in completed orders"),
-            ("Remaining Wallet Tokens", total_tokens_remaining, "Active tokens currently available in diner wallets"),
-            ("Overall Token Utilization", f"{overall_utilization}%", "Ratio of spent tokens to allocated tokens"),
-            ("Total Transactions Completed", completed_orders.count(), "Orders fulfilled at cafeteria counter"),
-            ("Active Diners Count", len(token_allocations_data), "Employees and guests registered in system"),
+            ("Reporting Scope", f"{kitchen_name} ({office_name})", "Hierarchy filter applied"),
+            ("Orders in Scope", orders.count(), "Total order transactions"),
+            ("Completed Orders", completed_orders.count(), "Fulfilled cafeteria orders"),
+            ("Tokens Spent in Scope", total_tokens_spent if is_admin else sum(o.total_tokens for o in completed_orders), "Tokens redeemed"),
+            ("Dishes in Catalog", menu_items.count(), "Menu items available in kitchen hierarchy"),
         ]
+        if is_admin:
+            kpis.extend([
+                ("Total Tokens Allocated", total_tokens_allocated, "Tokens credited to diner wallets"),
+                ("Remaining Wallet Tokens", total_tokens_remaining, "Active diner wallet balances"),
+                ("Overall Token Utilization", f"{overall_utilization}%", "Spent vs allocated"),
+                ("Active Diners Count", len(token_allocations_data), "Total employee & guest accounts"),
+            ])
 
         for kpi in kpis:
             row_idx += 1
@@ -3711,95 +3802,18 @@ def audit_export_view(request):
                     c.alignment = right_align
                     c.font = bold_font
 
-        # Shift Breakdown Table
-        row_idx += 2
-        ws_sum.cell(row=row_idx, column=1, value="SHIFT-WISE CONSUMPTION & TOKEN AUDIT").font = bold_font
-        row_idx += 1
-        shift_headers = ["Shift", "Active Diners", "Tokens Allocated", "Tokens Spent", "Orders Count", "Utilization Rate"]
-        for col_idx, h in enumerate(shift_headers, 1):
-            cell = ws_sum.cell(row=row_idx, column=col_idx, value=h)
-            cell.font = header_font
-            cell.fill = sub_header_fill
-            cell.alignment = center_align
-
-        for sk, name in [('day', 'Day Shift'), ('mid', 'Mid Shift'), ('night', 'Night Shift')]:
-            row_idx += 1
-            s = shift_summary.get(sk, {})
-            ws_sum.append([
-                name,
-                s.get('users_count', 0),
-                s.get('allocated', 0),
-                s.get('spent', 0),
-                s.get('orders_count', 0),
-                f"{s.get('utilization', 0)}%"
-            ])
-            for col_idx in range(1, 7):
-                c = ws_sum.cell(row=row_idx, column=col_idx)
-                c.font = regular_font
-                c.border = thin_border
-                if col_idx > 1:
-                    c.alignment = center_align
-
-        # Auto-adjust column widths for Sheet 1
         for col in ws_sum.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
             col_letter = col[0].column_letter
             ws_sum.column_dimensions[col_letter].width = max(max_len + 4, 14)
 
-        # -------------------------------------------------------------
-        # SHEET 2: Token Allocated Details (Per User)
-        # -------------------------------------------------------------
-        ws_tok = wb.create_sheet(title="Token Allocated Details")
-        ws_tok.views.sheetView[0].showGridLines = True
-
-        tok_headers = [
-            'User ID', 'Employee Name', 'Username', 'Role', 'Work Shift',
-            'Tokens Allocated', 'Tokens Spent (Cycle)', 'Tokens Remaining', 'Orders Placed', 'Utilization Rate'
-        ]
-        ws_tok.append(tok_headers)
-        for col_idx in range(1, len(tok_headers) + 1):
-            cell = ws_tok.cell(row=1, column=col_idx)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = center_align
-
-        for r_idx, row in enumerate(token_allocations_data, 2):
-            ws_tok.append([
-                sanitize(row['user_id']),
-                sanitize(row['name']),
-                sanitize(row['username']),
-                row['role'].capitalize(),
-                row['shift'].capitalize() if row['shift'] else 'Day',
-                row['tokens_allocated'],
-                row['tokens_spent'],
-                row['tokens_remaining'],
-                row['orders_count'],
-                f"{row['utilization_pct']}%"
-            ])
-            use_zebra = (r_idx % 2 == 1)
-            for col_idx in range(1, len(tok_headers) + 1):
-                c = ws_tok.cell(row=r_idx, column=col_idx)
-                c.font = regular_font
-                c.border = thin_border
-                if use_zebra:
-                    c.fill = zebra_fill
-                if col_idx in [6, 7, 8, 9, 10]:
-                    c.alignment = right_align
-
-        for col in ws_tok.columns:
-            max_len = max(len(str(cell.value or '')) for cell in col)
-            col_letter = col[0].column_letter
-            ws_tok.column_dimensions[col_letter].width = max(max_len + 3, 14)
-
-        # -------------------------------------------------------------
-        # SHEET 3: Total Transactions Details (All Orders)
-        # -------------------------------------------------------------
-        ws_tx = wb.create_sheet(title="Total Transactions Details")
+        # SHEET 2: Total Transactions Details (With Accepted By)
+        ws_tx = wb.create_sheet(title="Food Transactions")
         ws_tx.views.sheetView[0].showGridLines = True
 
         tx_headers = [
-            'Order ID', 'Date & Time (IST)', 'User ID', 'Customer Name', 'Username',
-            'Role', 'Shift', 'Status', 'Total Tokens', 'Dish Items Summary'
+            'Order ID', 'Date & Time (IST)', 'Employee ID', 'Customer Name', 'Username',
+            'Role', 'Shift', 'Kitchen', 'Status', 'Total Tokens', 'Dish Items Summary', 'Accepted / Fulfilled By'
         ]
         ws_tx.append(tx_headers)
         for col_idx in range(1, len(tx_headers) + 1):
@@ -3822,9 +3836,11 @@ def audit_export_view(request):
                 sanitize(o.user.username),
                 o.user.role.capitalize(),
                 o.user.work_shift.capitalize() if o.user.work_shift else 'Day',
+                o.kitchen.name if o.kitchen else 'Main Kitchen',
                 o.status.capitalize(),
                 o.total_tokens,
-                items_str
+                items_str,
+                sanitize(get_accepted_by_str(o))
             ])
             use_zebra = (r_idx % 2 == 1)
             for col_idx in range(1, len(tx_headers) + 1):
@@ -3833,7 +3849,7 @@ def audit_export_view(request):
                 c.border = thin_border
                 if use_zebra:
                     c.fill = zebra_fill
-                if col_idx in [1, 8, 9]:
+                if col_idx in [1, 9, 10]:
                     c.alignment = center_align
 
         for col in ws_tx.columns:
@@ -3841,17 +3857,100 @@ def audit_export_view(request):
             col_letter = col[0].column_letter
             ws_tx.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 60)
 
+        # SHEET 3: Kitchen Food Menu Catalog
+        ws_menu = wb.create_sheet(title="Kitchen Food Menu")
+        ws_menu.views.sheetView[0].showGridLines = True
+        menu_headers = ['Dish ID', 'Dish Name', 'Category', 'Dietary', 'Token Price', 'Price (INR)', 'Status', 'Kitchen', 'Office']
+        ws_menu.append(menu_headers)
+        for col_idx in range(1, len(menu_headers) + 1):
+            cell = ws_menu.cell(row=1, column=col_idx)
+            cell.font = header_font
+            cell.fill = sub_header_fill
+            cell.alignment = center_align
+
+        for r_idx, m in enumerate(menu_items, 2):
+            ws_menu.append([
+                m.id,
+                sanitize(m.name),
+                m.get_category_display() if hasattr(m, 'get_category_display') else m.category.capitalize(),
+                'Veg' if m.is_veg else 'Non-Veg',
+                m.price,
+                float(m.price_inr or 0),
+                'Live / Available' if m.is_available else 'Out of Stock',
+                m.kitchen.name if m.kitchen else 'Main Kitchen',
+                m.kitchen.office.name if (m.kitchen and m.kitchen.office) else 'HQ'
+            ])
+            use_zebra = (r_idx % 2 == 1)
+            for col_idx in range(1, len(menu_headers) + 1):
+                c = ws_menu.cell(row=r_idx, column=col_idx)
+                c.font = regular_font
+                c.border = thin_border
+                if use_zebra:
+                    c.fill = zebra_fill
+                if col_idx in [1, 4, 5, 6, 7]:
+                    c.alignment = center_align
+
+        for col in ws_menu.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = col[0].column_letter
+            ws_menu.column_dimensions[col_letter].width = max(max_len + 3, 14)
+
+        # SHEET 4: Token Allocated Details (For Admin & Staff Admin)
+        if not is_staff and token_allocations_data:
+            ws_tok = wb.create_sheet(title="Token Allocations")
+            ws_tok.views.sheetView[0].showGridLines = True
+            tok_headers = [
+                'Employee ID', 'Employee Name', 'Username', 'Role', 'Work Shift',
+                'Tokens Allocated', 'Tokens Spent (Cycle)', 'Tokens Remaining', 'Orders Placed', 'Utilization Rate'
+            ]
+            ws_tok.append(tok_headers)
+            for col_idx in range(1, len(tok_headers) + 1):
+                cell = ws_tok.cell(row=1, column=col_idx)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+
+            for r_idx, row in enumerate(token_allocations_data, 2):
+                ws_tok.append([
+                    sanitize(row['user_id']),
+                    sanitize(row['name']),
+                    sanitize(row['username']),
+                    row['role'].capitalize(),
+                    row['shift'].capitalize() if row['shift'] else 'Day',
+                    row['tokens_allocated'],
+                    row['tokens_spent'],
+                    row['tokens_remaining'],
+                    row['orders_count'],
+                    f"{row['utilization_pct']}%"
+                ])
+                use_zebra = (r_idx % 2 == 1)
+                for col_idx in range(1, len(tok_headers) + 1):
+                    c = ws_tok.cell(row=r_idx, column=col_idx)
+                    c.font = regular_font
+                    c.border = thin_border
+                    if use_zebra:
+                        c.fill = zebra_fill
+                    if col_idx in [6, 7, 8, 9, 10]:
+                        c.alignment = right_align
+
+            for col in ws_tok.columns:
+                max_len = max(len(str(cell.value or '')) for cell in col)
+                col_letter = col[0].column_letter
+                ws_tok.column_dimensions[col_letter].width = max(max_len + 3, 14)
+
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
 
+        prefix = "VDart_Audit_Corporate" if is_admin else (f"VDart_Audit_Kitchen_{kitchen_name.replace(' ', '_')}" if is_staff_admin else f"VDart_Audit_Staff_{user.username}")
         response = HttpResponse(
             output.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = f'attachment; filename="VDart_Audit_{year}_{month:02d}.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="{prefix}_{year}_{month:02d}.xlsx"'
         return response
 
+    # 6. PDF EXPORT
     elif fmt == 'pdf':
         from reportlab.lib.pagesizes import letter, landscape
         from reportlab.lib import colors
@@ -3870,50 +3969,71 @@ def audit_export_view(request):
         title_style = ParagraphStyle(
             'TitleStyle',
             parent=styles['Heading1'],
-            fontSize=16,
-            leading=20,
+            fontSize=15,
+            leading=18,
             textColor=colors.HexColor('#1E3A8A'),
-            spaceAfter=6
+            spaceAfter=5
         )
         subtitle_style = ParagraphStyle(
             'SubTitleStyle',
             parent=styles['Normal'],
-            fontSize=9,
-            leading=12,
+            fontSize=8.5,
+            leading=11,
             textColor=colors.HexColor('#475569'),
-            spaceAfter=12
+            spaceAfter=10
+        )
+        cell_style = ParagraphStyle('CellText', parent=styles['Normal'], fontSize=7.5, leading=9.5)
+
+        report_title = "VDart Cafe — Corporate Monthly Audit & Revenue Report" if is_admin else (
+            f"VDart Cafe — Kitchen Operations & Orders Audit ({kitchen_name})" if is_staff_admin else
+            f"VDart Cafe — Staff Accepted Transactions & Activity ({user.get_full_name() or user.username})"
         )
 
-        elements.append(Paragraph("VDart Cafe — Corporate Monthly Audit & Revenue Report", title_style))
+        elements.append(Paragraph(report_title, title_style))
         elements.append(Paragraph(
-            f"<b>Billing Period:</b> {period_start.strftime('%d %b %Y')} to {period_end.strftime('%d %b %Y')} (Reset Day: {reset_day}) | "
-            f"<b>Reset Date:</b> {reset_date_str} | <b>Approved By:</b> {approved_by_user} | "
-            f"<b>Total Revenue:</b> {total_tokens_spent} tokens | <b>Allocated:</b> {total_tokens_allocated} tokens | "
-            f"<b>Orders:</b> {completed_orders.count()} | <b>Generated:</b> {now_kolkata.strftime('%Y-%m-%d %H:%M:%S IST')}",
+            f"<b>Scope:</b> {office_name} / {kitchen_name} | <b>Period:</b> {period_start.strftime('%d %b %Y')} to {period_end.strftime('%d %b %Y')} | "
+            f"<b>Orders:</b> {orders.count()} | <b>Completed:</b> {completed_orders.count()} | <b>Generated:</b> {now_kolkata.strftime('%Y-%m-%d %H:%M:%S IST')}",
             subtitle_style
         ))
 
-        table_data = [
-            ['Order ID', 'Date & Time (IST)', 'User ID', 'Username', 'Role', 'Shift', 'Status', 'Total Tokens', 'Items']
-        ]
-        cell_style = ParagraphStyle('CellText', parent=styles['Normal'], fontSize=7.5, leading=9.5)
+        if report_type == 'menu':
+            # PDF of Food Menu Catalog
+            table_data = [
+                ['ID', 'Dish Name', 'Category', 'Diet', 'Price (Tokens)', 'Price (INR)', 'Status', 'Kitchen']
+            ]
+            for m in menu_items[:250]:
+                table_data.append([
+                    str(m.id),
+                    Paragraph(m.name, cell_style),
+                    m.category.capitalize(),
+                    'Veg' if m.is_veg else 'Non-Veg',
+                    f"{m.price} tk",
+                    f"Rs. {float(m.price_inr or 0):.2f}",
+                    'Available' if m.is_available else 'Out of Stock',
+                    m.kitchen.name if m.kitchen else 'Main Kitchen'
+                ])
+            col_widths = [35, 180, 80, 60, 75, 75, 80, 115]
+        else:
+            # PDF of Transactions
+            table_data = [
+                ['Order ID', 'Date & Time (IST)', 'Employee ID', 'Customer Name', 'Role', 'Status', 'Tokens', 'Items', 'Accepted By']
+            ]
+            for o in orders[:250]:
+                items_str = ", ".join(f"{it.menu_item.name} x{it.quantity}" for it in o.order_items.all())
+                dt_str = o.created_at.astimezone(kolkata_tz).strftime('%Y-%m-%d %H:%M')
+                table_data.append([
+                    str(o.id),
+                    dt_str,
+                    str(o.user.user_id or ''),
+                    str(o.user.get_full_name() or o.user.username),
+                    str(o.user.role),
+                    str(o.status),
+                    str(o.total_tokens),
+                    Paragraph(items_str[:70] + ('...' if len(items_str) > 70 else ''), cell_style),
+                    str(get_accepted_by_str(o))
+                ])
+            col_widths = [45, 80, 55, 75, 50, 55, 45, 195, 100]
 
-        for o in orders[:250]:
-            items_str = ", ".join(f"{it.menu_item.name} ({'Veg' if getattr(it.menu_item, 'is_veg', True) else 'Non-Veg'}) x{it.quantity}" for it in o.order_items.all())
-            dt_str = o.created_at.astimezone(kolkata_tz).strftime('%Y-%m-%d %H:%M')
-            table_data.append([
-                str(o.id),
-                dt_str,
-                str(o.user.user_id or ''),
-                str(o.user.username),
-                str(o.user.role),
-                str(o.user.work_shift),
-                str(o.status),
-                str(o.total_tokens),
-                Paragraph(items_str[:75] + ('...' if len(items_str) > 75 else ''), cell_style)
-            ])
-
-        col_widths = [45, 85, 55, 75, 55, 45, 60, 50, 260]
         report_table = Table(table_data, colWidths=col_widths, repeatRows=1)
         report_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E3A8A')),
@@ -3922,8 +4042,8 @@ def audit_export_view(request):
             ('FONTSIZE', (0, 0), (-1, 0), 8),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('ALIGN', (-1, 1), (-1, -1), 'LEFT'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 5),
-            ('TOPPADDING', (0, 0), (-1, 0), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+            ('TOPPADDING', (0, 0), (-1, 0), 4),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
@@ -3935,20 +4055,40 @@ def audit_export_view(request):
         doc.build(elements)
         buffer.seek(0)
 
+        prefix = "VDart_Audit_Corporate" if is_admin else (f"VDart_Audit_Kitchen_{kitchen_name.replace(' ', '_')}" if is_staff_admin else f"VDart_Audit_Staff_{user.username}")
         response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="VDart_Audit_{year}_{month:02d}.pdf"'
+        response['Content-Disposition'] = f'attachment; filename="{prefix}_{year}_{month:02d}.pdf"'
         return response
 
+    # 7. CSV EXPORT
     else:
-        # CSV Export — supports report_type='allocations', 'transactions', or 'all'
         output = io.StringIO()
-        output.write(f"# VDart Cafe Corporate Monthly Audit & Revenue Report\n")
-        output.write(f"# Billing Period: {period_start.strftime('%d %b %Y')} to {period_end.strftime('%d %b %Y')} (Token Reset Day: {reset_day}) | Actual Reset Date: {reset_date_str} | Approved By: {approved_by_user}\n")
+        prefix = "VDart_Audit_Corporate" if is_admin else (f"VDart_Audit_Kitchen_{kitchen_name.replace(' ', '_')}" if is_staff_admin else f"VDart_Audit_Staff_{user.username}")
+        output.write(f"# VDart Cafe Corporate Hierarchy Audit & Operational Report\n")
+        output.write(f"# Role: {role.upper()} | Scope: {office_name} / {kitchen_name} | Billing Period: {period_start.strftime('%d %b %Y')} to {period_end.strftime('%d %b %Y')}\n")
         writer = csv.writer(output)
 
-        if report_type == 'allocations':
+        if report_type == 'menu':
             writer.writerow([
-                'User ID', 'Employee Name', 'Username', 'Role', 'Shift',
+                'Dish ID', 'Dish Name', 'Category', 'Dietary', 'Token Price', 'Price (INR)', 'Availability Status', 'Kitchen', 'Office Location'
+            ])
+            for m in menu_items:
+                writer.writerow([
+                    sanitize(m.id),
+                    sanitize(m.name),
+                    sanitize(m.get_category_display() if hasattr(m, 'get_category_display') else m.category.capitalize()),
+                    sanitize('Veg' if m.is_veg else 'Non-Veg'),
+                    sanitize(m.price),
+                    sanitize(float(m.price_inr or 0)),
+                    sanitize('Live / Available' if m.is_available else 'Out of Stock'),
+                    sanitize(m.kitchen.name if m.kitchen else 'Main Kitchen'),
+                    sanitize(m.kitchen.office.name if (m.kitchen and m.kitchen.office) else 'HQ')
+                ])
+            filename = f"{prefix}_Food_Menu_{year}_{month:02d}.csv"
+
+        elif report_type == 'allocations' and not is_staff:
+            writer.writerow([
+                'Employee ID', 'Employee Name', 'Username', 'Role', 'Shift',
                 'Tokens Allocated', 'Tokens Spent (Cycle)', 'Tokens Remaining', 'Orders Placed', 'Utilization Rate'
             ])
             for r in token_allocations_data:
@@ -3964,11 +4104,12 @@ def audit_export_view(request):
                     sanitize(r['orders_count']),
                     sanitize(f"{r['utilization_pct']}%")
                 ])
-            filename = f"VDart_Token_Allocations_{year}_{month:02d}.csv"
-        elif report_type == 'transactions':
+            filename = f"{prefix}_Token_Allocations_{year}_{month:02d}.csv"
+
+        elif report_type == 'staff_accepted':
             writer.writerow([
-                'Order ID', 'Date & Time (IST)', 'User ID', 'Username', 'Employee Name', 'Role', 'Shift',
-                'Status', 'Total Tokens', 'Items'
+                'Order ID', 'Date & Time (IST)', 'Employee ID', 'Customer Name', 'Username', 'Role', 'Shift',
+                'Kitchen', 'Status', 'Total Tokens', 'Dish Items Summary', 'Accepted / Fulfilled By'
             ])
             for o in orders:
                 items_str = "; ".join(f"{it.menu_item.name} [{'Veg' if getattr(it.menu_item, 'is_veg', True) else 'Non-Veg'}] x{it.quantity}" for it in o.order_items.all())
@@ -3977,20 +4118,23 @@ def audit_export_view(request):
                     sanitize(o.id),
                     sanitize(dt_str),
                     sanitize(o.user.user_id or ''),
-                    sanitize(o.user.username),
                     sanitize(o.user.get_full_name() or o.user.username),
+                    sanitize(o.user.username),
                     sanitize(o.user.role),
                     sanitize(o.user.work_shift),
+                    sanitize(o.kitchen.name if o.kitchen else 'Main Kitchen'),
                     sanitize(o.status),
                     sanitize(o.total_tokens),
-                    sanitize(items_str)
+                    sanitize(items_str),
+                    sanitize(get_accepted_by_str(o))
                 ])
-            filename = f"VDart_Total_Transactions_{year}_{month:02d}.csv"
+            filename = f"{prefix}_Accepted_Transactions_{year}_{month:02d}.csv"
+
         else:
-            # Default / 'all': writes full transaction ledger with summary
+            # Default: Transactions ledger with accepted_by
             writer.writerow([
-                'Order ID', 'Date & Time (IST)', 'User ID', 'Username', 'Employee Name', 'Role', 'Shift',
-                'Status', 'Total Tokens', 'Items'
+                'Order ID', 'Date & Time (IST)', 'Employee ID', 'Customer Name', 'Username', 'Role', 'Shift',
+                'Kitchen', 'Status', 'Total Tokens', 'Dish Items Summary', 'Accepted / Fulfilled By'
             ])
             for o in orders:
                 items_str = "; ".join(f"{it.menu_item.name} [{'Veg' if getattr(it.menu_item, 'is_veg', True) else 'Non-Veg'}] x{it.quantity}" for it in o.order_items.all())
@@ -3999,22 +4143,23 @@ def audit_export_view(request):
                     sanitize(o.id),
                     sanitize(dt_str),
                     sanitize(o.user.user_id or ''),
-                    sanitize(o.user.username),
                     sanitize(o.user.get_full_name() or o.user.username),
+                    sanitize(o.user.username),
                     sanitize(o.user.role),
                     sanitize(o.user.work_shift),
+                    sanitize(o.kitchen.name if o.kitchen else 'Main Kitchen'),
                     sanitize(o.status),
                     sanitize(o.total_tokens),
-                    sanitize(items_str)
+                    sanitize(items_str),
+                    sanitize(get_accepted_by_str(o))
                 ])
-            filename = f"VDart_Audit_{year}_{month:02d}.csv"
+            filename = f"{prefix}_Transactions_{year}_{month:02d}.csv"
 
         response = HttpResponse(output.getvalue(), content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
 
-# Alias for explicit clarity
 monthly_audit_report_view = audit_export_view
 
 

@@ -117,6 +117,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       
       // Store minimal user data in localStorage for session persistence
+      const isTokenHolder = ['employee', 'guest'].includes(userData.role);
       const userToStore = {
         id: userData.id,
         username: userData.username,
@@ -124,9 +125,11 @@ export const AuthProvider = ({ children }) => {
         role: userData.role,
         name: userData.name || `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.username,
         shift: userData.work_shift || userData.shift,
-        tokens: userData.tokens ?? userData.monthly_tokens ?? userData.tokens_remaining ?? 0,
-        monthly_tokens: userData.tokens ?? userData.monthly_tokens ?? userData.tokens_remaining ?? 0,
-        tokens_remaining: userData.tokens ?? userData.monthly_tokens ?? userData.tokens_remaining ?? 0
+        ...(isTokenHolder ? {
+          tokens: userData.tokens ?? userData.monthly_tokens ?? userData.tokens_remaining ?? 0,
+          monthly_tokens: userData.tokens ?? userData.monthly_tokens ?? userData.tokens_remaining ?? 0,
+          tokens_remaining: userData.tokens ?? userData.monthly_tokens ?? userData.tokens_remaining ?? 0
+        } : {})
       };
       
       localStorage.setItem('user', JSON.stringify(userToStore));
@@ -175,6 +178,7 @@ export const AuthProvider = ({ children }) => {
       }
       
       // Store user data in localStorage for immediate session persistence
+      const isTokenHolder = ['employee', 'guest'].includes(activeUser.role);
       const userToStore = {
         id: activeUser.id,
         username: activeUser.username,
@@ -182,9 +186,11 @@ export const AuthProvider = ({ children }) => {
         role: activeUser.role,
         name: activeUser.name || `${activeUser.first_name || ''} ${activeUser.last_name || ''}`.trim() || activeUser.username,
         shift: activeUser.work_shift || activeUser.shift,
-        tokens: activeUser.tokens ?? activeUser.monthly_tokens ?? activeUser.tokens_remaining ?? 0,
-        monthly_tokens: activeUser.tokens ?? activeUser.monthly_tokens ?? activeUser.tokens_remaining ?? 0,
-        tokens_remaining: activeUser.tokens ?? activeUser.monthly_tokens ?? activeUser.tokens_remaining ?? 0
+        ...(isTokenHolder ? {
+          tokens: activeUser.tokens ?? activeUser.monthly_tokens ?? activeUser.tokens_remaining ?? 0,
+          monthly_tokens: activeUser.tokens ?? activeUser.monthly_tokens ?? activeUser.tokens_remaining ?? 0,
+          tokens_remaining: activeUser.tokens ?? activeUser.monthly_tokens ?? activeUser.tokens_remaining ?? 0
+        } : {})
       };
       
       localStorage.setItem('user', JSON.stringify(userToStore));
@@ -194,7 +200,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       setLoading(false);
       
-      toast.success(`Welcome back, ${userToStore.name} — kitchen is open.`);
+      toast.success(`Welcome back, ${userToStore.name}.`);
       
       // Redirect based on role
       const redirectPath = location.state?.from?.pathname || getDefaultRoute(activeUser.role);

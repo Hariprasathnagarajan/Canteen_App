@@ -57,7 +57,7 @@ const Login = () => {
 
   const validateForm = () => {
     if (!credentials.username.trim()) {
-      setFormError('Username is required');
+      setFormError('Please enter your Name, Email, or Employee ID');
       return false;
     }
     if (!credentials.password) {
@@ -107,8 +107,8 @@ const Login = () => {
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-visible">
             <img
               src={loginimage}
-              alt="VDart Cafe Background"
-              className="mt-14 h-full w-auto object-contain drop-shadow-md scale-[4] transform origin-center transition-transform duration-300"
+              alt="Cafe illustration"
+              className="h-full w-auto object-contain drop-shadow-md scale-[4]"
             />
           </div>
 
@@ -126,12 +126,15 @@ const Login = () => {
           )}
 
           <form className="space-y-3.5" onSubmit={handleSubmit} noValidate>
+            {/* Logo & Subtitle in front of illustration */}
+            <div className="relative z-10 flex flex-col items-center">
+              <img src={vdartLogo} alt="VDart Cafe" className="h-8 sm:h-9 w-auto drop-shadow-sm mb-1" />
+              <p className="mt-1 text-center">
+                Cafe Wallet
+              </p>
+            </div>
             <div>
-          {/* Logo & Subtitle in front of illustration */}
-          <div className="relative z-10 flex flex-col items-center">
-            <img src={vdartLogo} alt="VDart Cafe" className="h-8 sm:h-9 w-auto drop-shadow-sm mb-1" />
-          </div>
-              <label htmlFor="username" className="field-label text-[11px] mb-1">Username</label>
+              <label htmlFor="username" className="field-label text-[11px] mb-1">Name / Email / Employee ID</label>
               <div className="relative">
                 <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-ink-mute">
                   <User className="h-4 w-4" strokeWidth={2} />
@@ -145,7 +148,7 @@ const Login = () => {
                   autoFocus
                   value={credentials.username}
                   onChange={handleChange}
-                  placeholder="Username or ID"
+                  placeholder="Username, Email, or Employee ID"
                   className="field-input pl-9 py-2 text-xs sm:text-sm"
                 />
               </div>
@@ -209,7 +212,7 @@ const Login = () => {
 
         {/* Minimal Footer */}
         <p className="mt-4 text-center font-mono-tokens text-[10px] uppercase tracking-wider text-ink-mute">
-          VDart Cafe
+          VDart Cafe * IT Support
         </p>
       </motion.div>
 

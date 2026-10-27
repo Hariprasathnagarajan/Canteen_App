@@ -10,10 +10,14 @@ import {
   Hourglass, 
   ArrowRight, 
   Receipt, 
-  Check 
+  Check,
+  LayoutGrid,
+  List,
+  CupSoda,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import MenuCard from './MenuCard';
+import MenuCard, { getItemCategory } from './MenuCard';
+import { getFoodLineArt } from './FoodLineIcon';
 import CartDock from './CartDock';
 import MenuSkeleton from './MenuSkeleton';
 import EmptyState from './EmptyState';
@@ -25,12 +29,18 @@ export default function MenuExperience({ api, serviceNote }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [viewLayout, setViewLayout] = useState(() => localStorage.getItem('canteen_user_menu_layout') || 'grid');
   const [placing, setPlacing] = useState(false);
   const [placedOrderInfo, setPlacedOrderInfo] = useState(null);
   const [message, setMessage] = useState({ text: '', type: '' });
   const { user, updateUser } = useAuth();
   const searchInputRef = useRef(null);
   const msgTimer = useRef(null);
+
+  const handleToggleLayout = (layout) => {
+    setViewLayout(layout);
+    localStorage.setItem('canteen_user_menu_layout', layout);
+  };
 
   const showMessage = useCallback((text, type = 'error') => {
     setMessage({ text, type });
@@ -67,11 +77,48 @@ export default function MenuExperience({ api, serviceNote }) {
     return () => clearInterval(id);
   }, [loadData]);
 
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [dietFilter, setDietFilter] = useState('all');
+
+  // Dynamically compute category tabs from the actual dishes available on the menu
+  const categoryTabs = useMemo(() => {
+    const map = new Map();
+    const priority = { meal: 1, meals: 1, snack: 2, snacks: 2, beverage: 3, beverages: 3 };
+
+    menuItems.forEach((item) => {
+      if (!item.is_available) return;
+      const lineArt = getFoodLineArt(item);
+      const catKey = lineArt.category;
+      if (!map.has(catKey)) {
+        map.set(catKey, {
+          key: catKey,
+          label: lineArt.label,
+          icon: lineArt.Icon,
+          count: 0
+        });
+      }
+      map.get(catKey).count += 1;
+    });
+
+    const list = Array.from(map.values()).sort((a, b) => {
+      const pA = priority[a.key] || 50;
+      const pB = priority[b.key] || 50;
+      return pA - pB;
+    });
+
+    const totalAvailable = menuItems.filter((i) => i.is_available).length;
+    return [
+      { key: 'all', label: 'All', icon: null, count: totalAvailable },
+      ...list
+    ];
+  }, [menuItems]);
 
   const filteredItems = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     let avail = menuItems.filter((i) => i.is_available);
+    if (categoryFilter !== 'all') {
+      avail = avail.filter((i) => getItemCategory(i) === categoryFilter);
+    }
     if (dietFilter === 'veg') {
       avail = avail.filter((i) => (i.is_veg ?? (i.food_type !== 'non_veg')) === true);
     } else if (dietFilter === 'non_veg') {
@@ -81,7 +128,7 @@ export default function MenuExperience({ api, serviceNote }) {
     return avail.filter(
       (i) => i.name.toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q)
     );
-  }, [searchTerm, menuItems, dietFilter]);
+  }, [searchTerm, menuItems, categoryFilter, dietFilter]);
 
   const addToCart = (item) => {
     if (!item.is_available) return;
@@ -132,7 +179,7 @@ export default function MenuExperience({ api, serviceNote }) {
           total_tokens: orderData.total_tokens || currentTotal,
         });
 
-        showMessage('Order sent to kitchen!', 'success');
+        showMessage('Order placed successfully!', 'success');
       } else throw new Error('Failed to place order');
     } catch (err) {
       showMessage(err.response?.data?.error || err.response?.data?.message || 'Could not place order.', 'error');
@@ -196,47 +243,107 @@ export default function MenuExperience({ api, serviceNote }) {
         </span>
       </div>
 
-      {/* Diet Filters: All / Veg / Non-Veg */}
+      {/* Category Tabs: dynamically derived from actual menu dishes (Meals, Snacks, Beverages, etc.) */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-        <button
-          type="button"
-          onClick={() => setDietFilter('all')}
-          className={`btn-tactile inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-bold transition ${
-            dietFilter === 'all'
-              ? 'bg-slate-900 text-white shadow-2xs'
-              : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          All
-        </button>
-        <button
-          type="button"
-          onClick={() => setDietFilter('veg')}
-          className={`btn-tactile inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-bold transition ${
-            dietFilter === 'veg'
-              ? 'bg-emerald-600 text-white shadow-2xs'
-              : 'border border-emerald-200 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100'
-          }`}
-        >
-          <span className="flex h-3 w-3 items-center justify-center border border-current rounded-[2px] p-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-          </span>
-          <span>Veg</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setDietFilter('non_veg')}
-          className={`btn-tactile inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-bold transition ${
-            dietFilter === 'non_veg'
-              ? 'bg-rose-600 text-white shadow-2xs'
-              : 'border border-rose-200 bg-rose-50/70 text-rose-800 hover:bg-rose-100'
-          }`}
-        >
-          <span className="flex h-3 w-3 items-center justify-center border border-current rounded-[2px] p-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />
-          </span>
-          <span>Non-Veg</span>
-        </button>
+        {categoryTabs.map((tab) => {
+          const active = categoryFilter === tab.key;
+          const TabIcon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setCategoryFilter(tab.key)}
+              className={`btn-tactile inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                active
+                  ? 'bg-cobalt-600 text-white shadow-2xs'
+                  : 'border border-slate-200/90 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {TabIcon && <TabIcon className="h-3.5 w-3.5" />}
+              <span>{tab.label}</span>
+              <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-mono-tokens font-semibold ${
+                active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+              }`}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Diet Filters & View Mode Switcher */}
+      <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setDietFilter('all')}
+            className={`btn-tactile inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-bold transition ${
+              dietFilter === 'all'
+                ? 'bg-slate-900 text-white shadow-2xs'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setDietFilter('veg')}
+            className={`btn-tactile inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-bold transition ${
+              dietFilter === 'veg'
+                ? 'bg-emerald-600 text-white shadow-2xs'
+                : 'border border-emerald-200 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100'
+            }`}
+          >
+            <span className="flex h-3 w-3 items-center justify-center border border-current rounded-[2px] p-0.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            </span>
+            <span>Veg</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDietFilter('non_veg')}
+            className={`btn-tactile inline-flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs font-bold transition ${
+              dietFilter === 'non_veg'
+                ? 'bg-rose-600 text-white shadow-2xs'
+                : 'border border-rose-200 bg-rose-50/70 text-rose-800 hover:bg-rose-100'
+            }`}
+          >
+            <span className="flex h-3 w-3 items-center justify-center border border-current rounded-[2px] p-0.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            </span>
+            <span>Non-Veg</span>
+          </button>
+        </div>
+
+        {/* View Layout Switcher (Grid for mobile & desktop, List for compact rows) */}
+        <div className="flex items-center rounded-xl border border-slate-200 bg-white p-0.5 shadow-2xs shrink-0">
+          <button
+            type="button"
+            onClick={() => handleToggleLayout('grid')}
+            title="Grid View (both mobile & desktop)"
+            className={`btn-tactile flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+              viewLayout === 'grid'
+                ? 'bg-cobalt-600 text-white shadow-2xs'
+                : 'text-slate-500 hover:text-ink'
+            }`}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span className="text-[11px]">Grid</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleToggleLayout('list')}
+            title="List View"
+            className={`btn-tactile flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+              viewLayout === 'list'
+                ? 'bg-cobalt-600 text-white shadow-2xs'
+                : 'text-slate-500 hover:text-ink'
+            }`}
+          >
+            <List className="h-3.5 w-3.5" />
+            <span className="text-[11px]">List</span>
+          </button>
+        </div>
       </div>
 
       {/* Compact Alert message */}
@@ -270,8 +377,6 @@ export default function MenuExperience({ api, serviceNote }) {
             transition={{ duration: 0.15 }}
           >
             <EmptyState
-              icon={Search}
-              art={searchTerm ? 'receipt' : 'cup'}
               title={searchTerm ? 'No dish matches' : 'Menu is empty'}
               hint={searchTerm ? 'Try a different search term or clear the search.' : 'Dishes will appear once added by staff.'}
               action={searchTerm ? (
@@ -283,10 +388,14 @@ export default function MenuExperience({ api, serviceNote }) {
           </motion.div>
         ) : (
           <motion.div
-            key="menu-grid"
+            key={`menu-${viewLayout}`}
             layout="position"
             transition={{ layout: { type: 'spring', stiffness: 380, damping: 30 } }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-2.5"
+            className={
+              viewLayout === 'grid'
+                ? 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3'
+                : 'grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-2.5'
+            }
           >
             <AnimatePresence>
               {filteredItems.map((item) => (
@@ -296,6 +405,7 @@ export default function MenuExperience({ api, serviceNote }) {
                   qty={qtyOf(item.id)}
                   onAdd={addToCart}
                   onRemove={removeFromCart}
+                  variant={viewLayout}
                 />
               ))}
             </AnimatePresence>
@@ -328,7 +438,7 @@ export default function MenuExperience({ api, serviceNote }) {
                 Order Placed!
               </h3>
               <p className="mt-0.5 text-xs text-ink-mute">
-                Order #{placedOrderInfo.id} sent to kitchen.
+                Order #{placedOrderInfo.id} placed successfully.
               </p>
 
               <div className="my-3 rounded-xl border border-slate-200/90 bg-slate-50 p-2.5 space-y-1.5 text-xs text-left">

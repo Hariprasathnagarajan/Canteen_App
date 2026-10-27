@@ -1,9 +1,7 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Phone, Mail } from 'lucide-react';
 import { CupGlyph, LinkedLineBand } from '../components/lineart';
-import { CONTACT } from '../utils/contact';
 
 const spring = { type: 'spring', stiffness: 120, damping: 20 };
 
@@ -30,16 +28,6 @@ const NotFound = () => {
         >
           Back to today's menu
         </Link>
-
-        <div className="mt-8 flex flex-col items-center justify-center gap-2 text-xs text-ink-mute sm:flex-row sm:gap-4">
-          <span className="font-mono-tokens uppercase tracking-[0.16em]">Need help?</span>
-          <a href={CONTACT.phoneHref} className="inline-flex items-center gap-1.5 font-bold text-cobalt-700 underline-offset-4 hover:underline">
-            <Phone className="h-3.5 w-3.5" strokeWidth={2.2} /> {CONTACT.phoneDisplay}
-          </a>
-          <a href={CONTACT.emailHref} className="inline-flex items-center gap-1.5 font-bold text-cobalt-700 underline-offset-4 hover:underline">
-            <Mail className="h-3.5 w-3.5" strokeWidth={2.2} /> {CONTACT.email}
-          </a>
-        </div>
 
         <p className="mt-10 font-mono-tokens text-[11px] uppercase tracking-[0.18em] text-ink-mute">
           © {new Date().getFullYear()} VDart Cafe

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, Edit2, Trash2, Save, X, UserCheck, Search, CreditCard, KeyRound, Loader2, Check, Clock, ShieldCheck, AlertCircle, RefreshCw, Upload, RotateCcw, History, Building2, UtensilsCrossed, Users } from 'lucide-react';
 import { adminAPI } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
@@ -6,6 +6,7 @@ import { toast } from 'react-toastify';
 import BulkUploadPanel from '../../components/BulkUploadPanel';
 import EmptyState from '../../components/canteen/EmptyState';
 import Modal from '../../components/Modal';
+import OfficeKitchenModal from '../../components/canteen/OfficeKitchenModal';
 
 const USERS_TEMPLATE_CSV = [
   'username,user_id,first_name,last_name,email,role,work_shift,monthly_tokens',
@@ -21,7 +22,7 @@ const STAFF_TEMPLATE_CSV = [
   'staff_server1,STF002,Priya,Server,priya@vdart.com,staff,mid',
 ].join('\r\n');
 
-const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser, isStaffAdmin, offices = [], kitchens = [] }) => (
+const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser, isStaffAdmin, offices = [], kitchens = [], onManageOffices }) => (
   <Modal
     onClose={resetForm}
     title={editingUser ? 'Edit User' : 'Add New User'}
@@ -31,7 +32,7 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser,
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="block mb-1 text-sm font-medium text-slate-700">Username</label>
+          <label className="block mb-1 text-sm font-medium text-slate-700">Name</label>
           <input
             type="text"
             required
@@ -43,7 +44,7 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser,
 
         <div>
           <label className="block mb-1 text-sm font-medium text-gray-700">
-            User ID
+            Employee ID
           </label>
           <input
             type="text"
@@ -114,8 +115,8 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser,
                 <optgroup label="System & Cafeteria Leadership">
                   <option value="staff_admin">Staff Admin (Cafeteria Manager)</option>
                 </optgroup>
-                <optgroup label="Kitchen Crew">
-                  <option value="staff">Staff Crew (Cook / Server / Prep)</option>
+                <optgroup label="Cafeteria Crew">
+                  <option value="staff">Staff Crew (Service)</option>
                 </optgroup>
                 <optgroup label="Consumers">
                   <option value="employee">Employee</option>
@@ -127,48 +128,39 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser,
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div>
-          <label className="block mb-1 text-sm font-medium text-gray-700">Office Location</label>
-          <select
-            value={formData.office || ''}
-            onChange={(e) => {
-              const offId = e.target.value ? parseInt(e.target.value) : '';
-              const matchedKitchen = kitchens.find(k => k.office === offId);
-              setFormData({
-                ...formData,
-                office: offId,
-                assigned_kitchen: matchedKitchen ? matchedKitchen.id : (offId ? '' : formData.assigned_kitchen)
-              });
-            }}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent font-medium"
-          >
-            <option value="">-- Main Office (Default) --</option>
-            {offices.map((off) => (
-              <option key={off.id} value={off.id}>
-                {off.name} ({off.code})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {(formData.role === 'staff' || formData.role === 'staff_admin') && (
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-700">Assigned Kitchen</label>
-            <select
-              value={formData.assigned_kitchen || ''}
-              onChange={(e) => setFormData({ ...formData, assigned_kitchen: e.target.value ? parseInt(e.target.value) : '' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-sm font-medium text-gray-700">Office Location</label>
+          {!isStaffAdmin && onManageOffices && (
+            <button
+              type="button"
+              onClick={onManageOffices}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
             >
-              <option value="">-- Auto (Office Kitchen) --</option>
-              {kitchens.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.name} ({k.office_name})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+              + Manage Offices
+            </button>
+          )}
+        </div>
+        <select
+          value={formData.office || ''}
+          onChange={(e) => {
+            const offId = e.target.value ? parseInt(e.target.value) : '';
+            const matchedKitchen = kitchens.find(k => k.office === offId);
+            setFormData({
+              ...formData,
+              office: offId,
+              assigned_kitchen: matchedKitchen ? matchedKitchen.id : (offId ? '' : formData.assigned_kitchen)
+            });
+          }}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent font-medium"
+        >
+          <option value="">-- Select Office --</option>
+          {offices.map((off) => (
+            <option key={off.id} value={off.id}>
+              {off.name} ({off.code})
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex space-x-2 pt-2">
@@ -195,10 +187,12 @@ const UserForm = ({ formData, setFormData, handleSubmit, resetForm, editingUser,
 const AdminUsers = () => {
   const { user: currentUser } = useAuth();
   const isStaffAdmin = currentUser?.role === 'staff_admin';
+  const canManagePasswordResets = currentUser?.role === 'admin' || Boolean(currentUser?.is_superuser);
 
   const [users, setUsers] = useState([]);
   const [offices, setOffices] = useState([]);
   const [kitchens, setKitchens] = useState([]);
+  const [showOfficeModal, setShowOfficeModal] = useState(false);
   const [deletedUsers, setDeletedUsers] = useState([]);
   const [loadingDeleted, setLoadingDeleted] = useState(false);
   const [restoringId, setRestoringId] = useState(null);
@@ -408,23 +402,42 @@ const handleSubmit = async (e) => {
   const [resetRequests, setResetRequests] = useState([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [processingRequestId, setProcessingRequestId] = useState(null);
+  const [resetRequestsError, setResetRequestsError] = useState('');
+  const resetRequestsInFlightRef = useRef(false);
 
-  const fetchResetRequests = useCallback(async () => {
+  const fetchResetRequests = useCallback(async ({ silent = false } = {}) => {
+    // Only system admins can view reset requests (the API is admin-only).
+    if (!canManagePasswordResets || resetRequestsInFlightRef.current) return;
+    resetRequestsInFlightRef.current = true;
+    setLoadingRequests(true);
+    setResetRequestsError('');
     try {
-      setLoadingRequests(true);
       const res = await adminAPI.getPasswordResetRequests();
       setResetRequests(res.data.results || res.data || []);
     } catch (err) {
       console.error('Error fetching reset requests:', err);
-      toast.error('Could not load password reset requests.');
+      const message = err.response?.status === 403
+        ? 'Password reset approvals are limited to the system admin.'
+        : 'Could not load password reset requests.';
+      setResetRequestsError(message);
+      // Initial background load stays silent; explicit refreshes surface one deduped toast.
+      if (!silent) {
+        toast.error(message, { toastId: 'password-reset-requests-error' });
+      }
     } finally {
+      resetRequestsInFlightRef.current = false;
       setLoadingRequests(false);
     }
-  }, []);
+  }, [canManagePasswordResets]);
 
   useEffect(() => {
-    fetchResetRequests();
-  }, [fetchResetRequests]);
+    if (!canManagePasswordResets) {
+      setResetRequests([]);
+      setResetRequestsError('');
+      return;
+    }
+    fetchResetRequests({ silent: true });
+  }, [fetchResetRequests, canManagePasswordResets]);
 
   const handleApproveRequest = async (requestId) => {
     setProcessingRequestId(requestId);
@@ -478,6 +491,19 @@ const handleSubmit = async (e) => {
   useEffect(() => {
     if (activeTab === 'deleted') fetchDeletedUsers();
   }, [activeTab, fetchDeletedUsers]);
+
+  // Filtered list based on search term
+  const filteredUsers = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return users;
+    return users.filter(user =>
+      (user.username || '').toLowerCase().includes(term) ||
+      (user.user_id || '').toLowerCase().includes(term) ||
+      (user.first_name || '').toLowerCase().includes(term) ||
+      (user.last_name || '').toLowerCase().includes(term) ||
+      (user.email || '').toLowerCase().includes(term)
+    );
+  }, [users, searchTerm]);
 
   const displayedUsers = useMemo(() => {
     let list = filteredUsers;
@@ -554,13 +580,13 @@ const handleSubmit = async (e) => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             {isStaffAdmin 
-              ? `Staff Crew — ${currentUser?.assigned_kitchen_name || currentUser?.active_kitchen?.name || 'Kitchen Pass'}` 
+              ? `Staff Crew — ${currentUser?.office_name || currentUser?.active_kitchen?.office_name || 'Office'}`
               : 'User & Staff Directory'}
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
             {isStaffAdmin 
-              ? 'Manage kitchen and service staff crew members assigned strictly to your kitchen' 
-              : 'Dedicated management for Staff Admins, Kitchen Crew, and Users segmented by Office'}
+              ? 'Manage staff crew members assigned to your office'
+              : 'Dedicated management for Staff Admins, Staff Crew, and Users segmented by Office'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 md:flex-none">
@@ -581,9 +607,9 @@ const handleSubmit = async (e) => {
                 value={selectedOfficeFilter}
                 onChange={(e) => setSelectedOfficeFilter(e.target.value)}
                 className="btn-tactile h-full px-3 py-2 text-xs font-bold text-slate-800 bg-white border rounded-xl border-slate-200 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-                title="Filter users by office location & kitchen"
+                title="Filter users by office location"
               >
-                <option value="all">🏢 All Offices & Kitchens</option>
+                <option value="all">🏢 All Offices</option>
                 {offices.map((off) => (
                   <option key={off.id} value={off.id}>
                     📍 {off.name} ({off.code})
@@ -595,6 +621,16 @@ const handleSubmit = async (e) => {
 
           {!showAddForm && !editingUser && activeTab !== 'deleted' && (
             <>
+              {!isStaffAdmin && (
+                <button
+                  onClick={() => setShowOfficeModal(true)}
+                  className="btn-tactile flex items-center px-3.5 py-2 space-x-1.5 text-xs font-semibold text-indigo-900 bg-indigo-50 border rounded-xl border-indigo-200 hover:bg-indigo-100 shadow-2xs transition-colors"
+                  title="Create or edit company office locations"
+                >
+                  <Building2 size={14} className="text-indigo-700" />
+                  <span>Offices</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowBulkPanel((prev) => !prev)}
                 className="btn-tactile flex items-center px-3.5 py-2 space-x-1.5 text-xs font-semibold text-slate-800 bg-white border rounded-xl border-slate-200 hover:bg-slate-50 shadow-2xs transition-colors"
@@ -626,7 +662,7 @@ const handleSubmit = async (e) => {
       {showBulkPanel && (
         <BulkUploadPanel
           title={isStaffAdmin ? "Bulk Upload Staff" : "Bulk Upload Users"}
-          description={isStaffAdmin ? "Import kitchen and service staff from CSV, JSON, or Excel (.xlsx)." : "Import employees, guests or staff from a CSV, JSON or Excel (.xlsx) file — or paste rows. Existing usernames are updated; new ones are created."}
+          description={isStaffAdmin ? "Import staff from CSV, JSON, or Excel (.xlsx)." : "Import employees, guests or staff from a CSV, JSON or Excel (.xlsx) file — or paste rows. Existing usernames are updated; new ones are created."}
           templateFilename={isStaffAdmin ? "VDart_Cafe_Staff_Template.csv" : "VDart_Cafe_Users_Template.csv"}
           templateContent={isStaffAdmin ? STAFF_TEMPLATE_CSV : USERS_TEMPLATE_CSV}
           placeholder={'username,user_id,first_name,last_name,email,role,work_shift,monthly_tokens\nemp101,EMP101,Arun,Kumar,arun.kumar@vdart.com,employee,day,\n-- OR JSON / console dump --\n{username: "staff_chef1", user_id: "STF001", role: "staff", work_shift: "day"}'}
@@ -652,6 +688,7 @@ const handleSubmit = async (e) => {
           isStaffAdmin={isStaffAdmin}
           offices={offices}
           kitchens={kitchens}
+          onManageOffices={() => setShowOfficeModal(true)}
         />
       )}
 
@@ -756,7 +793,7 @@ const handleSubmit = async (e) => {
               className="relative inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-emerald-700 font-extrabold"
             >
               <UtensilsCrossed className="w-3.5 h-3.5" />
-              <span>Kitchen Staff Crew</span>
+              <span>Staff Crew</span>
               <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                 {staffCrewCount}
               </span>
@@ -764,33 +801,35 @@ const handleSubmit = async (e) => {
             </button>
           )}
 
-          {/* Password Reset Requests */}
-          <button
-            onClick={() => setActiveTab('requests')}
-            className={`relative inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold transition-colors ${
-              activeTab === 'requests' ? 'text-primary font-extrabold' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>Reset Requests</span>
-            {pendingRequestsCount > 0 ? (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-cobalt-600 text-white animate-pulse">
-                {pendingRequestsCount} pending
-              </span>
-            ) : (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">
-                {resetRequests.length}
-              </span>
-            )}
-            {activeTab === 'requests' && (
-              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-primary transition-all duration-300"></span>
-            )}
-          </button>
+          {/* Password Reset Requests (system admin only) */}
+          {canManagePasswordResets && (
+            <button
+              onClick={() => setActiveTab('requests')}
+              className={`relative inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold transition-colors ${
+                activeTab === 'requests' ? 'text-primary font-extrabold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Reset Requests</span>
+              {pendingRequestsCount > 0 ? (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-cobalt-600 text-white animate-pulse">
+                  {pendingRequestsCount} pending
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">
+                  {resetRequests.length}
+                </span>
+              )}
+              {activeTab === 'requests' && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-primary transition-all duration-300"></span>
+              )}
+            </button>
+          )}
         </div>
 
-        {activeTab === 'requests' && (
+        {canManagePasswordResets && activeTab === 'requests' && (
           <button
-            onClick={fetchResetRequests}
+            onClick={() => fetchResetRequests()}
             className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loadingRequests ? 'animate-spin' : ''}`} />
@@ -837,7 +876,7 @@ const handleSubmit = async (e) => {
       )}
 
       {/* RENDER TAB: PASSWORD RESET REQUESTS */}
-      {activeTab === 'requests' ? (
+      {canManagePasswordResets && activeTab === 'requests' ? (
         <div className="space-y-4">
           <div className="p-4 bg-cobalt-50/70 border border-cobalt-200/80 rounded-2xl flex items-start space-x-3 text-xs text-cobalt-900">
             <ShieldCheck className="w-5 h-5 text-cobalt-600 flex-shrink-0 mt-0.5" />
@@ -852,6 +891,23 @@ const handleSubmit = async (e) => {
           {loadingRequests ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-12 h-12 border-b-2 rounded-full animate-spin border-primary"></div>
+            </div>
+          ) : resetRequestsError ? (
+            <div className="flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50/70 p-4 text-xs text-red-900 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-600" />
+                <div>
+                  <p className="text-sm font-semibold text-red-950">Password reset requests unavailable</p>
+                  <p className="text-red-800">{resetRequestsError}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => fetchResetRequests({ silent: true })}
+                className="inline-flex items-center gap-1.5 self-start rounded-xl border border-red-300 bg-white px-3 py-1.5 font-semibold text-red-700 transition-colors hover:bg-red-100 sm:self-auto"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Retry</span>
+              </button>
             </div>
           ) : resetRequests.length === 0 ? (
             <EmptyState
@@ -1080,21 +1136,12 @@ const handleSubmit = async (e) => {
 
                   <span
                     className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
-                    title={`Office: ${user.office_name || 'Main Office'}${user.assigned_kitchen_name ? ` • Kitchen: ${user.assigned_kitchen_name}` : ''}`}
+                    title={`Office: ${user.office_name || 'Not assigned'}`}
                   >
-                    📍 {user.office_name || 'Main Office'}
+                    📍 {user.office_name || 'No office'}
                   </span>
 
-                  {(user.role === 'staff' || user.role === 'staff_admin') && (
-                    <span
-                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200"
-                      title={`Kitchen: ${user.assigned_kitchen_name || user.active_kitchen?.name || 'Main Kitchen'}`}
-                    >
-                      🍳 {user.assigned_kitchen_name || user.active_kitchen?.name || 'Main Kitchen'}
-                    </span>
-                  )}
-
-                  {user.role !== 'staff' && (
+                  {['employee', 'guest'].includes(user.role) && (
                     <span
                       className="inline-flex items-center px-3 py-1 space-x-1 font-medium text-green-700 bg-green-100 rounded-full"
                       title={`Tokens: ${user.tokens || 0}`}
@@ -1181,7 +1228,7 @@ const handleSubmit = async (e) => {
 
             <div className="p-3 mb-4 text-xs rounded-xl bg-slate-50 border border-slate-200/60 space-y-1 text-slate-600">
               <div><span className="font-semibold text-slate-700">User:</span> {resetModalUser.first_name} {resetModalUser.last_name} (@{resetModalUser.username})</div>
-              <div><span className="font-semibold text-slate-700">Role:</span> <span className="capitalize">{resetModalUser.role}</span> • User ID: {resetModalUser.user_id || 'N/A'}</div>
+              <div><span className="font-semibold text-slate-700">Role:</span> <span className="capitalize">{resetModalUser.role}</span> • Employee ID: {resetModalUser.user_id || 'N/A'}</div>
             </div>
 
             <div className="p-3 mb-4 text-xs rounded-xl bg-cobalt-50/80 border border-cobalt-200/80 text-cobalt-900">
@@ -1219,6 +1266,16 @@ const handleSubmit = async (e) => {
           </div>
         </div>
       )}
+
+      {/* Office & Kitchen Management Modal */}
+      <OfficeKitchenModal
+        isOpen={showOfficeModal}
+        onClose={() => setShowOfficeModal(false)}
+        onOfficeUpdated={() => {
+          fetchOfficesAndKitchens();
+          fetchUsers();
+        }}
+      />
     </div>
     </div>
   );

@@ -80,6 +80,33 @@ class AuthenticationTests(VDartCafeBaseTestCase):
         self.assertEqual(resp.data["username"], "emp_test")
         self.assertEqual(resp.data["role"], "employee")
 
+    def test_employee_can_login_with_email_and_employee_id(self):
+        # Login using email
+        resp_email = self.client.post("/api/login/", {"username": "emp@vdartcafe.com", "password": "EmpPassword123!"})
+        self.assertEqual(resp_email.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp_email.data["username"], "emp_test")
+
+        # Login using Employee ID (user_id)
+        resp_id = self.client.post("/api/login/", {"username": "EMP001", "password": "EmpPassword123!"})
+        self.assertEqual(resp_id.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp_id.data["username"], "emp_test")
+
+    def test_admin_and_staff_cannot_login_with_email_or_user_id(self):
+        # Admin can login with username
+        resp_admin_user = self.client.post("/api/login/", {"username": "admin_test", "password": "AdminPassword123!"})
+        self.assertEqual(resp_admin_user.status_code, status.HTTP_200_OK)
+
+        # Admin CANNOT login with email
+        resp_admin_email = self.client.post("/api/login/", {"username": "admin@vdartcafe.com", "password": "AdminPassword123!"})
+        self.assertEqual(resp_admin_email.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Staff CANNOT login with email or user_id
+        resp_staff_email = self.client.post("/api/login/", {"username": "staff@vdartcafe.com", "password": "StaffPassword123!"})
+        self.assertEqual(resp_staff_email.status_code, status.HTTP_400_BAD_REQUEST)
+
+        resp_staff_id = self.client.post("/api/login/", {"username": "STF001", "password": "StaffPassword123!"})
+        self.assertEqual(resp_staff_id.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_login_wrong_password_rejected(self):
         resp = self.client.post("/api/login/", {"username": "emp_test", "password": "wrong!"})
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1016,6 +1043,53 @@ class StaffAdminRoleAndRBACBoundaryTests(VDartCafeBaseTestCase):
         csv_resp = self.client.get("/api/reports/audit-export/?format=csv")
         self.assertEqual(csv_resp.status_code, status.HTTP_200_OK)
         self.assertEqual(csv_resp["Content-Type"], "text/csv")
+
+    def test_role_wise_audit_log_scoping_and_downloading(self):
+        # 1. Staff can download their accepted transactions and kitchen menu
+        self.client.force_authenticate(user=self.staff)
+        resp_staff_tx = self.client.get("/api/reports/audit-export/?format=csv&report_type=staff_accepted")
+        self.assertEqual(resp_staff_tx.status_code, status.HTTP_200_OK)
+        self.assertIn("Accepted_Transactions", resp_staff_tx["Content-Disposition"])
+
+        resp_staff_menu = self.client.get("/api/reports/audit-export/?format=csv&report_type=menu")
+        self.assertEqual(resp_staff_menu.status_code, status.HTTP_200_OK)
+        self.assertIn("Food_Menu", resp_staff_menu["Content-Disposition"])
+
+        # Staff forbidden from token allocations and system audit
+        resp_staff_alloc = self.client.get("/api/reports/audit-export/?format=csv&report_type=allocations")
+        self.assertEqual(resp_staff_alloc.status_code, status.HTTP_403_FORBIDDEN)
+
+        resp_staff_sys = self.client.get("/api/reports/audit-export/?format=csv&report_type=system_audit")
+        self.assertEqual(resp_staff_sys.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. Staff Admin can download kitchen transactions, menu, but not system audit
+        self.client.force_authenticate(user=self.staff_admin)
+        resp_sa_menu = self.client.get("/api/reports/audit-export/?format=csv&report_type=menu")
+        self.assertEqual(resp_sa_menu.status_code, status.HTTP_200_OK)
+        self.assertIn("Food_Menu", resp_sa_menu["Content-Disposition"])
+
+        resp_sa_sys = self.client.get("/api/reports/audit-export/?format=csv&report_type=system_audit")
+        self.assertEqual(resp_sa_sys.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Admin can download all types
+        self.client.force_authenticate(user=self.admin)
+        resp_admin_alloc = self.client.get("/api/reports/audit-export/?format=csv&report_type=allocations")
+        self.assertEqual(resp_admin_alloc.status_code, status.HTTP_200_OK)
+        self.assertIn("Token_Allocations", resp_admin_alloc["Content-Disposition"])
+
+        resp_admin_all = self.client.get("/api/reports/audit-export/?format=csv&report_type=all")
+        self.assertEqual(resp_admin_all.status_code, status.HTTP_200_OK)
+
+    def test_staff_order_approval_records_accepted_by(self):
+        k = self.staff.get_kitchen()
+        order = Order.objects.create(user=self.employee, total_tokens=10, status="pending", kitchen=k)
+        self.client.force_authenticate(user=self.staff)
+        resp = self.client.patch(f"/api/staff/orders/{order.id}/update_status/", {"status": "approved"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        order.refresh_from_db()
+        self.assertEqual(order.status, "approved")
+        self.assertEqual(order.accepted_by, self.staff)
+        self.assertEqual(resp.data.get("accepted_by_name"), self.staff.username)
 
 
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BadgeCheck, Coins, User, KeyRound, ChevronRight, ArrowLeft, Building2, UtensilsCrossed } from 'lucide-react';
+import { BadgeCheck, Coins, User, KeyRound, ChevronRight, ArrowLeft, Building2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Modal from '../Modal';
 import PasswordChangeCard from '../PasswordChangeCard';
@@ -25,17 +25,15 @@ const ProfileModal = ({ isOpen, onClose }) => {
   const displayName =
     [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.name || user?.username || 'Member';
 
-  const officeName = user?.office_name || user?.active_kitchen?.office_name || (user?.role === 'admin' ? 'Global (All Offices)' : 'Main Office');
-  const kitchenName = user?.assigned_kitchen_name || user?.active_kitchen?.name || (user?.role === 'admin' ? 'Global (All Kitchens)' : 'Main Kitchen');
+  const officeName = user?.office_name || user?.active_kitchen?.office_name || (user?.role === 'admin' ? 'All Offices' : '—');
 
   const rows = [
-    { Icon: BadgeCheck, label: 'User ID', value: user?.user_id || '—', mono: true },
-    ...(user?.role !== 'admin' && user?.role !== 'staff_admin' && user?.role !== 'staff'
+    { Icon: BadgeCheck, label: 'Employee ID', value: user?.user_id || '—', mono: true },
+    ...(['employee', 'guest'].includes(user?.role)
       ? [{ Icon: Coins, label: 'Tokens', value: `${user?.tokens ?? 0} tk`, accent: true }]
       : []),
     { Icon: User, label: 'Role', value: (ROLE_LABEL[user?.role] || user?.role || 'Employee') },
     { Icon: Building2, label: 'Office', value: officeName },
-    { Icon: UtensilsCrossed, label: 'Kitchen', value: kitchenName },
   ];
 
   return (
@@ -57,9 +55,11 @@ const ProfileModal = ({ isOpen, onClose }) => {
               <p className="truncate font-mono-tokens text-[11px] text-slate-300">
                 @{user?.username} · {user?.role}
               </p>
-              <div className="mt-1.5">
-                <TokenPill value={user?.tokens ?? 0} tone="dark" />
-              </div>
+              {['employee', 'guest'].includes(user?.role) && (
+                <div className="mt-1.5">
+                  <TokenPill value={user?.tokens ?? 0} tone="dark" />
+                </div>
+              )}
             </div>
           </div>
 
@@ -98,9 +98,9 @@ const ProfileModal = ({ isOpen, onClose }) => {
 
           <div className="pt-1">
             <LogoutButton
-              variant="secondary"
+              variant="ghost"
               size="sm"
-              className="w-full justify-center rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-xs font-bold text-ink hover:bg-slate-100"
+              className="w-full justify-center rounded-xl py-2.5 text-xs font-bold"
               showLabel
             />
           </div>

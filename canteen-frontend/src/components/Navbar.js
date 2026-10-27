@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutGrid, Users, Coins, UtensilsCrossed, ClipboardList, Menu as MenuIcon, X, Phone, Mail, ChevronRight } from 'lucide-react';
+import { LayoutGrid, Users, Coins, UtensilsCrossed, ClipboardList, Menu as MenuIcon, X, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useProfileModal } from '../context/ProfileModalContext';
 import vdartLogo from '../assets/vdart.svg';
 import LogoutButton from './LogoutButton';
 import TokenPill from './canteen/TokenPill';
-import { CONTACT } from '../utils/contact';
 
 const Navbar = () => {
   const { user, isAuthenticated, loading } = useAuth();
@@ -41,7 +40,7 @@ const Navbar = () => {
         return [
           { name: 'Cafeteria Analytics', path: '/staff-admin/dashboard', icon: LayoutGrid },
           { name: 'Staff Crew', path: '/admin/users', icon: Users },
-          { name: 'Kitchen Pass', path: '/staff/orders', icon: ClipboardList },
+          { name: 'Order Queue', path: '/staff/orders', icon: ClipboardList },
           { name: 'Menu', path: '/staff/menu', icon: UtensilsCrossed },
         ];
       case 'staff':
@@ -143,7 +142,7 @@ const Navbar = () => {
 
             {/* Logout button: desktop/laptop */}
             <div className="hidden lg:block">
-              <LogoutButton variant="ghost" size="sm" showLabel={false} className="rounded-full border border-slate-200/80 bg-white/70" />
+              <LogoutButton variant="ghost" size="sm" showLabel={false} className="rounded-full" />
             </div>
 
             {/* Mobile hamburger menu trigger */}
@@ -213,26 +212,8 @@ const Navbar = () => {
                   })}
                 </div>
 
-                {/* Contact */}
-                <div className="mt-2 border-t border-slate-200/80 pt-2">
-                  <a
-                    href={CONTACT.phoneHref}
-                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-ink-soft transition-colors hover:bg-paper-dark hover:text-ink"
-                  >
-                    <Phone className="h-4 w-4 text-cobalt-600" strokeWidth={2} />
-                    {CONTACT.phoneDisplay}
-                  </a>
-                  <a
-                    href={CONTACT.emailHref}
-                    className="flex min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-ink-soft transition-colors hover:bg-paper-dark hover:text-ink"
-                  >
-                    <Mail className="h-4 w-4 shrink-0 text-cobalt-600" strokeWidth={2} />
-                    <span className="truncate">{CONTACT.email}</span>
-                  </a>
-                </div>
-
                 {/* Logout */}
-                <div className="mt-1 border-t border-slate-200/80 pt-2">
+                <div className="mt-2 border-t border-slate-200/80 pt-2">
                   <LogoutButton variant="ghost" size="sm" showLabel className="w-full justify-start px-3 py-2.5 text-sm" />
                 </div>
               </div>

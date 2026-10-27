@@ -145,10 +145,17 @@ class CustomUserSerializer(serializers.ModelSerializer):
         return obj.get_full_name() or obj.username
 
     def get_tokens(self, obj):
-        # Don't return tokens for admin, staff_admin, and staff users
-        if obj.role in ['admin', 'staff_admin', 'staff']:
+        # Tokens are maintained exclusively for employee and guest
+        if obj.role not in ['employee', 'guest']:
             return None
         return obj.current_tokens()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Admin, staff_admin, and staff are not employees, so remove token field completely
+        if instance.role not in ['employee', 'guest']:
+            data.pop('tokens', None)
+        return data
 
     def get_active_kitchen(self, obj):
         k = obj.get_kitchen()
@@ -166,11 +173,16 @@ class LoginSerializer(serializers.Serializer):
         password = attrs.get('password')
 
         if identifier and password:
-            user_obj = (
-                CustomUser.objects.filter(username__iexact=identifier, is_deleted=False).first()
-                or CustomUser.objects.filter(user_id__iexact=identifier, is_deleted=False).first()
-                or CustomUser.objects.filter(email__iexact=identifier, is_deleted=False).first()
-            )
+            # All roles can log in using username
+            user_obj = CustomUser.objects.filter(username__iexact=identifier, is_deleted=False).first()
+
+            # Regular users (employee, guest) can also log in using Employee ID (user_id) or email.
+            # Admin, staff, and staff_admin are restricted to logging in only with username.
+            if not user_obj:
+                user_obj = (
+                    CustomUser.objects.filter(user_id__iexact=identifier, role__in=['employee', 'guest'], is_deleted=False).first()
+                    or CustomUser.objects.filter(email__iexact=identifier, role__in=['employee', 'guest'], is_deleted=False).first()
+                )
 
             username_to_auth = user_obj.username if user_obj else identifier
             user = authenticate(username=username_to_auth, password=password)
@@ -228,16 +240,24 @@ class OrderSerializer(serializers.ModelSerializer):
     kitchen_id = serializers.IntegerField(source='kitchen.id', read_only=True, allow_null=True)
     kitchen_name = serializers.CharField(source='kitchen.name', read_only=True, allow_null=True)
     office_name = serializers.CharField(source='kitchen.office.name', read_only=True, allow_null=True)
+    accepted_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    accepted_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'user', 'user_details', 'kitchen', 'kitchen_id', 'kitchen_name', 'office_name',
+            'accepted_by', 'accepted_by_name',
             'status', 'total_tokens', 'total_amount_inr',
             'tokens_refunded', 'created_at', 'updated_at', 'cancelled_at', 'cancellation_reason',
             'order_items', 'items'
         ]
-        read_only_fields = ['user', 'total_tokens', 'total_amount_inr', 'tokens_refunded', 'cancelled_at']
+        read_only_fields = ['user', 'total_tokens', 'total_amount_inr', 'tokens_refunded', 'cancelled_at', 'accepted_by']
+
+    def get_accepted_by_name(self, obj):
+        if obj.accepted_by:
+            return obj.accepted_by.get_full_name() or obj.accepted_by.username
+        return None
 
     def get_user_details(self, obj):
         return {

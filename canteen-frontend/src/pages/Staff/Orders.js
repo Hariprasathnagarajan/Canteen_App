@@ -1,19 +1,21 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Search, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
-  Package, 
-  Loader2, 
+import {
+  Search,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Package,
+  Loader2,
   RotateCcw,
   Volume2,
   VolumeX,
   Receipt,
   Utensils,
   Download,
-  Calendar
+  Calendar,
+  FileSpreadsheet,
+  FileText
 } from 'lucide-react';
 import { staffAPI, reportsAPI } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
@@ -22,12 +24,13 @@ import EmptyState from '../../components/canteen/EmptyState';
 import ReceiptModal from '../../components/canteen/ReceiptModal';
 import VegBadge from '../../components/canteen/VegBadge';
 import DateRangePicker from '../../components/canteen/DateRangePicker';
+import Modal from '../../components/Modal';
 import { statusMeta } from '../../components/canteen/OrderCard';
-import { 
-  playOrderChime, 
-  unlockAudio, 
-  isSoundEnabled, 
-  setSoundEnabled 
+import {
+  playOrderChime,
+  unlockAudio,
+  isSoundEnabled,
+  setSoundEnabled
 } from '../../utils/audioAlerts';
 import { broadcastOrderEvent, subscribeToOrderUpdates } from '../../utils/orderSync';
 
@@ -40,7 +43,8 @@ const STATUS_FILTERS = [
 
 const StaffOrders = () => {
   const { user } = useAuth();
-  const canExport = user?.role === 'admin' || user?.role === 'staff_admin';
+  const canExport = Boolean(user && ['admin', 'staff_admin', 'staff'].includes(user.role));
+  const isStaff = user?.role === 'staff';
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,12 +54,15 @@ const StaffOrders = () => {
   const [soundActive, setSoundActive] = useState(isSoundEnabled());
   const [exporting, setExporting] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState('xlsx');
+  const [exportReportType, setExportReportType] = useState(isStaff ? 'staff_accepted' : 'transactions');
   const [exportRange, setExportRange] = useState({ startDate: '', endDate: '' });
 
   const highestOrderIdRef = useRef(0);
   const isFirstFetchRef = useRef(true);
 
-  const handleExportOrders = async (format = 'xlsx') => {
+  const handleExportOrders = async (format = exportFormat, reportType = exportReportType) => {
     if (exportRange.startDate && exportRange.endDate && exportRange.startDate > exportRange.endDate) {
       toast.error('The "From" date must be on or before the "To" date.');
       return;
@@ -65,11 +72,13 @@ const StaffOrders = () => {
       const hasRange = exportRange.startDate && exportRange.endDate;
       await reportsAPI.downloadReportFile({
         format,
+        report_type: reportType,
         cycle: hasRange ? undefined : 'current',
         start_date: exportRange.startDate || undefined,
         end_date: exportRange.endDate || undefined,
       });
       toast.success(`Orders report (${format.toUpperCase()}) downloaded successfully!`);
+      setShowExportModal(false);
     } catch (err) {
       toast.error(err.response?.data?.error || err.message || 'Failed to export orders');
     } finally {
@@ -117,7 +126,7 @@ const StaffOrders = () => {
       setOrders(orderList);
     } catch (error) {
       if (!isSilent) {
-        toast.error('Failed to load kitchen orders');
+        toast.error('Failed to load orders');
       }
     } finally {
       if (!isSilent) setLoading(false);
@@ -215,7 +224,7 @@ const StaffOrders = () => {
       <div className="flex items-center justify-between gap-2 pt-1 pb-1">
         <div>
           <h1 className="text-lg sm:text-xl font-extrabold text-ink tracking-tight flex items-center gap-2">
-            <span>Kitchen Orders</span>
+            <span>Staff Orders</span>
             {counts.pending > 0 && (
               <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900 border border-amber-300 animate-pulse">
                 {counts.pending} new
@@ -235,11 +244,10 @@ const StaffOrders = () => {
                 aria-expanded={showDatePicker}
                 aria-label="Choose export date range"
                 title="Choose export date range"
-                className={`btn-tactile inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-bold transition-colors shadow-2xs ${
-                  showDatePicker || (exportRange.startDate && exportRange.endDate)
+                className={`btn-tactile inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-bold transition-colors shadow-2xs ${showDatePicker || (exportRange.startDate && exportRange.endDate)
                     ? 'border-cobalt-300 bg-cobalt-50 text-cobalt-800 hover:bg-cobalt-100'
                     : 'border-slate-200 bg-white text-ink hover:bg-slate-50'
-                }`}
+                  }`}
               >
                 <Calendar className="h-3.5 w-3.5 text-cobalt-600" />
                 <span className="hidden sm:inline">
@@ -248,10 +256,10 @@ const StaffOrders = () => {
               </button>
 
               <button
-                onClick={() => handleExportOrders('xlsx')}
+                onClick={() => setShowExportModal(true)}
                 disabled={exporting}
                 aria-label="Export orders"
-                title="Download orders report (.xlsx)"
+                title="Download orders report"
                 className="btn-tactile inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-ink hover:bg-slate-50 transition-colors shadow-2xs"
               >
                 {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin text-cobalt-600" /> : <Download className="h-3.5 w-3.5 text-cobalt-600" />}
@@ -264,11 +272,10 @@ const StaffOrders = () => {
             onClick={toggleSound}
             aria-label="Toggle chime"
             title={soundActive ? 'Sound ON' : 'Muted'}
-            className={`btn-tactile flex h-8 w-8 items-center justify-center rounded-xl border transition-colors ${
-              soundActive 
-                ? 'border-cobalt-300 bg-cobalt-50 text-cobalt-900' 
+            className={`btn-tactile flex h-8 w-8 items-center justify-center rounded-xl border transition-colors ${soundActive
+                ? 'border-cobalt-300 bg-cobalt-50 text-cobalt-900'
                 : 'border-slate-200 bg-white text-ink-mute'
-            }`}
+              }`}
           >
             {soundActive ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </button>
@@ -303,14 +310,12 @@ const StaffOrders = () => {
               <button
                 key={f.id}
                 onClick={() => setStatusFilter(f.id)}
-                className={`btn-tactile relative shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors ${
-                  active ? 'bg-cobalt-600 text-white' : 'text-ink-mute hover:text-ink'
-                }`}
+                className={`btn-tactile relative shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors ${active ? 'bg-cobalt-600 text-white' : 'text-ink-mute hover:text-ink'
+                  }`}
               >
                 <span>{f.label}</span>
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-mono-tokens ${
-                  active ? 'bg-cobalt-700 text-white' : 'bg-slate-100 text-slate-600'
-                }`}>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-mono-tokens ${active ? 'bg-cobalt-700 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}>
                   {count}
                 </span>
               </button>
@@ -358,11 +363,10 @@ const StaffOrders = () => {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2 }}
-                className={`overflow-hidden rounded-3xl border bg-white shadow-card flex flex-col justify-between transition-all ${
-                  order.status === 'pending'
+                className={`overflow-hidden rounded-3xl border bg-white shadow-card flex flex-col justify-between transition-all ${order.status === 'pending'
                     ? 'border-amber-300 ring-4 ring-amber-400/15'
                     : 'border-slate-200/80'
-                }`}
+                  }`}
               >
                 <div>
                   {/* Card Header: Ticket #, Big Customer Name, Time & Status */}
@@ -373,8 +377,8 @@ const StaffOrders = () => {
                       </span>
                       <div>
                         <h2 className="text-lg sm:text-xl font-black text-ink tracking-tight">
-                          {order.user_details?.first_name 
-                            ? `${order.user_details.first_name} ${order.user_details.last_name || ''}`.trim() 
+                          {order.user_details?.first_name
+                            ? `${order.user_details.first_name} ${order.user_details.last_name || ''}`.trim()
                             : (order.user_details?.username || 'Guest Diner')}
                         </h2>
                         <div className="flex items-center gap-2 text-xs text-ink-mute mt-0.5">
@@ -395,11 +399,10 @@ const StaffOrders = () => {
                         <Clock className="h-4 w-4" />
                         {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
-                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${
-                        order.status === 'approved' 
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${order.status === 'approved'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                           : meta.cls
-                      }`}>
+                        }`}>
                         <Icon className="h-4 w-4" strokeWidth={2} />
                         {order.status === 'approved' ? 'Accepted' : meta.label}
                       </span>
@@ -440,17 +443,17 @@ const StaffOrders = () => {
 
                   {order.status === 'pending' ? (
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                      <button 
-                        onClick={() => updateOrderStatus(order.id, 'approved')} 
-                        disabled={busy} 
+                      <button
+                        onClick={() => updateOrderStatus(order.id, 'approved')}
+                        disabled={busy}
                         className="btn-tactile flex-1 inline-flex items-center justify-center gap-2.5 rounded-2xl bg-emerald-600 px-6 py-4 text-base sm:text-lg font-black text-white hover:bg-emerald-700 active:scale-[0.99] disabled:opacity-50 transition-all shadow-md hover:shadow-lg cursor-pointer"
                       >
                         {busy ? <Loader2 className="h-6 w-6 animate-spin" /> : <CheckCircle2 className="h-6 w-6" strokeWidth={2.5} />}
                         <span>ACCEPT / APPROVE ORDER</span>
                       </button>
-                      <button 
-                        onClick={() => updateOrderStatus(order.id, 'declined')} 
-                        disabled={busy} 
+                      <button
+                        onClick={() => updateOrderStatus(order.id, 'declined')}
+                        disabled={busy}
                         className="btn-tactile inline-flex items-center justify-center gap-2 rounded-2xl border-2 border-red-200 bg-red-50 px-5 py-4 text-sm sm:text-base font-bold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors cursor-pointer"
                       >
                         <XCircle className="h-5 w-5" />
@@ -461,7 +464,7 @@ const StaffOrders = () => {
                     <div className="flex items-center justify-between gap-3">
                       <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-800 bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-200">
                         <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                        Order Accepted · Cooking in Kitchen
+                        Order Accepted · Preparing
                       </span>
                       <button
                         onClick={() => setSelectedReceiptOrder(order)}
@@ -486,11 +489,11 @@ const StaffOrders = () => {
           })}
         </div>
       ) : (
-        <EmptyState 
-          icon={Package} 
+        <EmptyState
+          icon={Package}
           art="tray"
-          title="No orders" 
-          hint={statusFilter === 'pending' ? 'No pending orders waiting right now.' : 'No orders in this view.'} 
+          title="No orders"
+          hint={statusFilter === 'pending' ? 'No pending orders waiting right now.' : 'No orders in this view.'}
         />
       )}
 
@@ -503,6 +506,97 @@ const StaffOrders = () => {
           api={staffAPI}
         />
       )}
+
+      {/* Role-Based Export Audit Modal */}
+      <Modal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        title="Export Orders & Audit Logs"
+        subtitle="Download role-authorized activity reports and transaction summaries"
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          {/* Format selection */}
+          <div>
+            <label className="block text-xs font-bold text-ink mb-2">Export Format</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: 'xlsx', label: 'Excel Workbook', ext: '.xlsx', Icon: FileSpreadsheet },
+                { id: 'csv', label: 'CSV File', ext: '.csv', Icon: FileSpreadsheet },
+                { id: 'pdf', label: 'PDF Document', ext: '.pdf', Icon: FileText },
+              ].map((fmt) => (
+                <button
+                  key={fmt.id}
+                  type="button"
+                  onClick={() => setExportFormat(fmt.id)}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border text-center transition-all ${
+                    exportFormat === fmt.id
+                      ? 'border-cobalt-600 bg-cobalt-50/70 text-cobalt-900 ring-2 ring-cobalt-500/20'
+                      : 'border-slate-200 bg-white text-ink hover:border-slate-300'
+                  }`}
+                >
+                  <fmt.Icon className={`h-4 w-4 mb-1 ${exportFormat === fmt.id ? 'text-cobalt-600' : 'text-slate-400'}`} />
+                  <span className="text-[11px] font-bold">{fmt.label}</span>
+                  <span className="text-[9px] text-ink-mute font-mono">{fmt.ext}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Scope selection */}
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1.5">Report Scope</label>
+            <select
+              value={exportReportType}
+              onChange={(e) => setExportReportType(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-cobalt-500"
+            >
+              {isStaff ? (
+                <>
+                  <option value="staff_accepted">My Accepted Transactions (Accepted & fulfilled by you)</option>
+                  <option value="transactions">Kitchen Orders (All orders in kitchen)</option>
+                  <option value="menu">Kitchen Food Menu & Dish Catalogs</option>
+                </>
+              ) : (
+                <>
+                  <option value="transactions">Kitchen Food Transactions & Order Details</option>
+                  <option value="menu">Kitchen Food Menu & Dish Catalogs</option>
+                </>
+              )}
+            </select>
+          </div>
+
+          {/* Date range filter */}
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1.5">Date Range (Optional)</label>
+            <DateRangePicker
+              startDate={exportRange.startDate}
+              endDate={exportRange.endDate}
+              onChange={setExportRange}
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setShowExportModal(false)}
+              disabled={exporting}
+              className="btn-tactile rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-ink hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportOrders(exportFormat, exportReportType)}
+              disabled={exporting}
+              className="btn-tactile inline-flex items-center gap-1.5 rounded-xl bg-cobalt-600 px-4 py-2 text-xs font-bold text-white hover:bg-cobalt-700 disabled:opacity-50 transition-colors shadow-2xs"
+            >
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Download {exportFormat.toUpperCase()}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
